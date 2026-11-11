@@ -2,15 +2,44 @@
 
 #include <BMP180.h>                 // подключение библиотеки датчика bmp180, описание здесь (http://blog.iarduino.ru/page/novaya-biblioteka-dlya-d..) 
 #include <Wire.h>                   // подключение библиотеки для работы с I2C 
-#include <LiquidCrystal_I2C.h>      // подключение библиотеки I2C 16x2 дисплея
+#include <Waveshare_LCD1602.h>      // драйвер встроенного I2C дисплея Waveshare
 #include <Bounce2.h>                // подключение библиотеки для избежания дребезга контактов клавиш 
 #include <SBB_CLICK.h>              // подключение библиотеки удержания кнопки
 #include <math.h>                   // подключение библиотеки для работы с математическими функциями (в данном случае с логарифмом для вычисления высоты на уровне моря)
 BMP180 sensor;                      // 
-LiquidCrystal_I2C lcd(0x27,16,2);   // МОЖНО МЕНЯТЬ!!! Установка адреса дисплея на 0x27 (если не заработает, то можно попробовать 0x3F, если и так не работает, надо грузить
-                                    // скетч поиска устройств на I2C шине и смотреть занятый адрес), указываем, что дисплей имеет по 16 символов в 2 строках  
-#define switchPin1 4                // пин кнопки 1
-#define switchPin2 5                // пин кнопки 2
+#define BL_FULL_INIT 1              // если подсветка не реагирует на меню, поставьте 1 (полная инициализация микросхемы подсветки)
+class VarioLCD : public Waveshare_LCD1602, public Print {
+public:
+  VarioLCD(uint8_t cols, uint8_t rows) : Waveshare_LCD1602(cols, rows) {}
+  size_t write(uint8_t value) override { write_char(value); return 1; }
+  void createChar(uint8_t location, uint8_t charmap[]) { customSymbol(location, charmap); }
+  void backlight() {}  // Backlight is built into this Waveshare module
+  void noBacklight() {}
+  // Backlight chip SN3193 at I2C address 0x6B (the Waveshare library here has no backlight functions)
+  void blWrite(uint8_t reg, uint8_t val) {
+    Wire.beginTransmission(0x6B);
+    Wire.write(reg);
+    Wire.write(val);
+    Wire.endTransmission();
+  }
+  void initBacklightChip() {        // only used if BL_FULL_INIT is 1
+    blWrite(0x2F, 0x00);            // reset
+    blWrite(0x00, 0x20);            // normal operation
+    blWrite(0x02, 0x00);            // normal (not breathing) mode
+    blWrite(0x1C, 0x07);            // enable outputs 1-3
+  }
+  void setBacklightLevel(uint8_t percent) {   // percent: 0-100
+    uint8_t pwm = (uint16_t)percent * 255 / 100;
+    blWrite(0x04, pwm);             // PWM output 1
+    blWrite(0x05, pwm);             // PWM output 2
+    blWrite(0x06, pwm);             // PWM output 3
+    blWrite(0x07, 0x00);            // latch the new values
+  }
+};
+
+VarioLCD lcd(16, 2);
+#define switchPin1 5                // пин кнопки 1
+#define switchPin2 4                // пин кнопки 2
 #define switchPin3 6                // пин кнопки 3
 #define p 3                         // пин пищалки
 #define gLED 7                      // пин ЗЕЛЕНОГО диода
@@ -20,12 +49,12 @@ Bounce b1 = Bounce();               // создаём объект Bounce 1 (д�
 Bounce b2 = Bounce();               // создаём объект Bounce 2 (для удаления дребезга кнопок)
 Bounce b3 = Bounce();               // создаём объект Bounce 3 (для удаления дребезга кнопок)
 
-SBB_CLICK Buttom1(4,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 1, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
-SBB_CLICK Buttom2(5,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 2, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
+SBB_CLICK Buttom1(5,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 1, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
+SBB_CLICK Buttom2(4,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 2, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
 SBB_CLICK Buttom3(6,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 3, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
 
 float vario_down = -1.1;            // Установка порогового значения СНИЖЕНИЯ для запуска пищалки         - МОЖНО МЕНЯТЬ только в паре с TrDNcount, значения брать из массива treshDN!!!
-float vario_up = 0.3;               // Установка порогового значения ПОДЪЁМА для запуска пищалки          - МОЖНО МЕНЯТЬ только в паре с TrUPcount, значения брать из массива treshUP!!!
+float vario_up = 0.1;               // Установка порогового значения ПОДЪЁМА для запуска пищалки          - МОЖНО МЕНЯТЬ только в паре с TrUPcount, значения брать из массива treshUP!!!
 float vario_fall = -3.0;            // Установка порогового значения сработки сигнализации при ПАДЕНИИ    - МОЖНО МЕНЯТЬ только в паре с TrFLcount, значения брать из массива treshFL!!!
 float vario_fall_tmp = 0;           // Временная переменная для хранения значения vario_fall (при ВКЛ/ВЫКЛ теста СИГНАЛИЗАЦИИ при ПАДЕНИИ)
 float beep;                         // переменная для вывода звука при работе вариометра                  
@@ -44,7 +73,7 @@ float D2 = 0;                       // переменная для работы 
 
 float alt[51];                                                          // Массив alt переменных типа float (для работы усреднителя), начальная размерность 51, моя 41
 float tim[51];                                                          // Массив tim переменных типа float (для работы усреднителя), начальная размерность 51, моя 41 
-float treshUP[5] = {0.3, 0.4, 0.5, 0.6, 0.7};                           // Массив, содержащий значения срабатывания вариометра при подъёме                       - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_up и TrUPcount
+float treshUP[5] = {0.1, 0.4, 0.5, 0.6, 0.7};                           // Массив, содержащий значения срабатывания вариометра при подъёме                       - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_up и TrUPcount
 float treshDN[5] = {-0.5, -0.7, -0.9, -1.1, -1.3};                      // Массив, содержащий значения срабатывания вариометра при спуске                        - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_down и TrDNcount
 float treshFL[8] = {-999.0, -2.5, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0};  // Массив значений срабатывания сигнализации при ПАДЕНИИ                                 - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_fall и TrFLcount
 
@@ -95,6 +124,8 @@ boolean AlarmTestFlag = false;      // флаг ВКЛ/ВЫКЛ тестовог
 boolean AltBeepFlag = true;         // флаг для задержки после срабатывания сигнала на снижении при проходе порога высоты
 boolean AltUpBeepFlag = true;       // флаг для задержки после срабатывания сигнала на подъёме при проходе порога высоты
 boolean BackLightFlag = true;       // флаг для проверки ВКЛ/ВЫКЛ подсветки экрана
+byte BackLightLevel = 2;             // выбранный уровень яркости подсветки (индекс в массиве BackLightPercent)
+const byte BackLightPercent[3] = {30, 60, 100};  // МОЖНО МЕНЯТЬ!!! Три уровня яркости подсветки в процентах (0-100)
 boolean AltDifTmpFlag = false;      // флаг проверки был ли сброс высоты, или нет (единый для всех высот, но в коде выбирается проверка по значению cnt)
 boolean Thermal_ON = false;         // флаг проверки включения режима Thermal для вариометра
 
@@ -227,22 +258,25 @@ void setup()
   pinMode(rLED, OUTPUT);            // установка пина 8 в output (это пин красного светодиода)
   
   pinMode(switchPin1, INPUT);       // установка пина 4 в input (это пин кнопки)
-  digitalWrite(switchPin1, HIGH);   // включаем подтягивающий резистор
+  digitalWrite(switchPin1, LOW);    // отключаем внутреннюю подтяжку; используется внешний резистор 10 кОм
   b1.attach(switchPin1);            // объект Bounce будет слушать кнопку на пине switchPin1
   b1.interval(5);                   // устанавливаем время задержки в 5 мс
 
   pinMode(switchPin2, INPUT);       // установка пина 5 в input (это пин кнопки)
-  digitalWrite(switchPin2, HIGH);   // включаем подтягивающий резистор
+  digitalWrite(switchPin2, LOW);    // отключаем внутреннюю подтяжку; используется внешний резистор 10 кОм
   b2.attach(switchPin2);            // объект Bounce будет слушать кнопку на пине switchPin2
   b2.interval(5);                   // устанавливаем время задержки в 5 мс
 
   pinMode(switchPin3, INPUT);       // установка пина 6 в input (это пин кнопки)
-  digitalWrite(switchPin3, HIGH);   // включаем подтягивающий резистор
+  digitalWrite(switchPin3, LOW);    // отключаем внутреннюю подтяжку; используется внешний резистор 10 кОм
   b3.attach(switchPin3);            // объект Bounce будет слушать кнопку на пине switchPin3
   b3.interval(5);                   // устанавливаем время задержки в 5 мс
   
   lcd.init();                       // инициализация lcd 
-  lcd.backlight();                  // включение подсветки lcd 
+#if BL_FULL_INIT
+  lcd.initBacklightChip();          // инициализация микросхемы подсветки
+#endif
+  lcd.setBacklightLevel(BackLightPercent[BackLightLevel]);  // яркость подсветки при старте
   lcd.setCursor(0,0);               //
   lcd.print("nx-Vario....v1.2");    // первая строка экрана приветствия
   lcd.setCursor(0,1);               //
@@ -277,7 +311,7 @@ void setup()
   lcd.createChar(5, A_2);           // создаём значок A_2
   lcd.createChar(6, A_3);           // создаём значок A_3
   lcd.createChar(7, arrow_e_up);    // создаём значок пустой стрелки вверх
-  lcd.createChar(8, arrow_e_down);  // создаём значок пустой стрелки вверх
+  lcd.createChar(0, arrow_e_down);  // создаём значок пустой стрелки вверх
 } 
 
 ///// ПОДПРОГРАММА ВЫВОДА ДАННЫХ НА ЭКРАН / LCD OUTPUT /////
@@ -318,7 +352,7 @@ if (windowCount == 0)                                                   // ес�
       lcd.setCursor(0,0);                                               //
       lcd.write(byte(7));                                               //
       lcd.setCursor(0,1);                                               //
-      lcd.write(byte(8));                                               //
+      lcd.write(byte(0));                                               //
     }                                                                   // 
 
 ///// ВЫВОД ЗНАЧЕНИЙ ВАРИОМЕТРА / VARIO OUTPUT /////
@@ -766,8 +800,8 @@ void Back_Light()                                                               
   lcd.setCursor(0,1);                                                             //
   lcd.print("Backlight  ");                                                       // рисуем строку "Backlight"
   lcd.setCursor(13,1);                                                            //
-    if (BackLightFlag == true) {lcd.print("ON ");}                                // если подсветка включена, то рисуем ON
-    else {lcd.print("OFF");}                                                      // если выключена, то рисуем OFF
+    lcd.print(BackLightPercent[BackLightLevel]);                                  // рисуем яркость подсветки в процентах
+    if (BackLightPercent[BackLightLevel] < 100) {lcd.print(" ");}                 // затираем лишний символ
 }                                                                                 //
 
 ///// ВКЛ/ВЫКЛ ЗВУКА КЛАВИШ / BUTTON BEEP ON/OFF /////
@@ -788,7 +822,7 @@ if (sensor.read(3))                                                             
 if (vario>-0.3) {Alarm = false;}                                                          // проверка ВКЛ/ВЫКЛ сигнала тревоги при падении
 
 ///// ОБРАБОТКА СОБЫТИЙ НА КНОПКЕ 1 / BUTTON 1 SHORT PRESS /////
-if ((b1.update() == 1) && (b1.read() == 0) && (b1.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 1 нажата и не было зарегистрировано длительное нажатие (короче, это короткий клик)
+if ((b1.update() == 1) && (b1.read() == HIGH) && (b1.rose() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 1 нажата и не было зарегистрировано длительное нажатие (короче, это короткий клик)
   {                                                                                       //
     button_beep();                                                                        // сигнал при нажатии клавиши
     if (MainMenu == false)                                                                // ... и если мы не в МЕНЮ ...
@@ -832,10 +866,7 @@ if (Buttom1.click())                                                            
       }                                                                                   // 
     else                                                                                  // ... если мы, всё-таки, в МЕНЮ, то по длинному нажатию на клавишу 1...
       {                                                                                   //
-        if (BackLightFlag == true)                                                        // ... и если подсветка экрана включена
-          {lcd.noBacklight(); BackLightFlag = false;}                                     // то выключаем
-        else                                                                              // иначе
-          {lcd.backlight(); BackLightFlag = true;}                                        // включаем
+
       }                                                                                   //
     longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
   }                                                                                       //
@@ -843,7 +874,7 @@ if (b1.fell() == 1) {longpress = false;}                                        
 Buttom1.release();                                                                        // обязательно надо прописывать после выполнения click(), иначе выполнится только раз
 
 ///// ОБРАБОТКА СОБЫТИЙ НА КНОПКЕ 2 / BUTTON 2 SHORT PRESS /////
-if ((b2.update() == 1) && (b2.read() == 0) && (b2.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 2 нажата и не было зарегистрировано длительное нажатие (короткий клик)
+if ((b2.update() == 1) && (b2.read() == HIGH) && (b2.rose() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 2 нажата и не было зарегистрировано длительное нажатие (короткий клик)
   {                                                                                       //
     button_beep();                                                                        // сигнал при нажатии клавиши
     lcd.clear();                                                                          // очистка экрана при нажатии кнопки
@@ -926,7 +957,7 @@ if (b2.fell() == 1) {longpress = false;}                                        
 Buttom2.release();                                                                        // обязательно надо прописывать после выполнения click(), иначе выполнится только раз
 
 ///// ОБРАБОТКА СОБЫТИЙ НА КНОПКЕ 3 / BUTTON 3 SHORT PRESS /////
-if ((b3.update() == 1) && (b3.read() == 0) && (b3.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 3 нажата и не было зарегистрировано длительное нажатие (короткий клик)
+if ((b3.update() == 1) && (b3.read() == HIGH) && (b3.rose() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 3 нажата и не было зарегистрировано длительное нажатие (короткий клик)
   {                                                                                       //
     button_beep();                                                                        // сигнал при нажатии клавиши
     if (MainMenu == false)                                                                // ... если мы не в МЕНЮ, то...
@@ -1014,10 +1045,9 @@ if ((b3.update() == 1) && (b3.read() == 0) && (b3.fell() == 1) && (longpress == 
           }                                                                               //
         if (menuCount == 10)                                                              // ...если мы в режиме ВКЛ/ВЫКЛ подсветки экрана
           {                                                                               // 
-            if (BackLightFlag == true)                                                    // ... и если подсветка включена
-              {lcd.noBacklight(); BackLightFlag = false;}                                 // то выключаем
-            else                                                                          // иначе
-              {lcd.backlight(); BackLightFlag = true;}                                    // включаем
+            BackLightLevel++;                                                             // следующий уровень яркости
+            if (BackLightLevel == 3) {BackLightLevel = 0;}                                // после третьего уровня возвращаемся к первому
+            lcd.setBacklightLevel(BackLightPercent[BackLightLevel]);                      // применяем яркость
           }                                                                               //
       }                                                                                   //
   }                                                                                       //
@@ -1140,8 +1170,8 @@ if ((tempo-beep)>Beep_period)                                           //
     Alarm = false;                                                      // отключаем тревогу
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     rLEDtmp = true;                                                     // красный светодиод на сливе
-    Beep_period=200;                                                    //
-    tone(p,(950+(125*vario)),125);                                      // выводим звук (было 600, 70, 340)
+    Beep_period=40;                                                     // update pitch every 40 ms (continuous tone)
+    tone(p,constrain(int(1000+(170*vario)),300,1200),150);   // continuous sink tone: lower pitch the faster you sink
   }                                                                     //
   else if (vario<=vario_fall)                                           // если значение vario меньше критического
   {                                                                     //
