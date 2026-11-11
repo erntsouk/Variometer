@@ -558,8 +558,8 @@ void Menu()                                                                     
     else if (menuCount == 2) {TresholdDN();}                                      // 3 экран меню - порог срабатывания на снижении
     else if (menuCount == 3) {LED_light();}                                       // 4 экран меню - ВКЛ/ВЫКЛ светодиодов
     else if (menuCount == 4) {ButtonBeep();}                                      // 5 экран меню - ВКЛ/ВЫКЛ звука клавиш
-    else if (menuCount == 5) {VarioMode();}                                       // 6 экран меню - режим работы вариометра
-    else if (menuCount == 6) {VolumeSet();}                                       // 7 экран меню - громкость пищалки
+    else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
+    else if (menuCount == 6) {VarioMode();}                                       // 7 экран меню - режим работы вариометра
 }                                                                                 //
 
 ///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -995,17 +995,17 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             if (button_beep_ON == true) {button_beep_ON = false;}                         //
             else {button_beep_ON = true;}                                                 //
           }                                                                               //
-        if (menuCount == 5)                                                               // ...если мы в режиме выбора работы вариометра
-          {                                                                               //
-            if (Thermal_ON == true) {Thermal_ON = false;}                                 //
-            else {Thermal_ON = true;}                                                     //
-          }                                                                               //
-        if (menuCount == 6)                                                               // ...если мы в режиме громкости пищалки
+        if (menuCount == 5)                                                               // ...если мы в режиме громкости пищалки
           {                                                                               //
             volCount++;                                                                   //
             if (volCount == 4) {volCount = 0;}                                            // после MAX снова OFF
             playTone(1800,60);                                                            // пробный сигнал на новой громкости
             beepDelay(60);                                                                //
+          }                                                                               //
+        if (menuCount == 6)                                                               // ...если мы в режиме выбора работы вариометра
+          {                                                                               //
+            if (Thermal_ON == true) {Thermal_ON = false;}                                 //
+            else {Thermal_ON = true;}                                                     //
           }                                                                               //
         saveSettings();                                                            // сохраняем изменённую настройку сразу
       }                                                                                   //
