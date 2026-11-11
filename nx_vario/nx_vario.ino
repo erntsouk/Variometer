@@ -80,6 +80,14 @@ char s3 = '0';                      // символ в значении давл
 char s4 = '0';                      // символ в значении давления по морю (используется для работы при вводе значения)
 
 String presSTR;                     // строка используется в процедуре ручного ввода давления
+char t0 = '0';                      // символы в значении высоты (для меню установки высоты)
+char t1 = '0';                      //
+char t2 = '0';                      //
+char t3 = '0';                      //
+String altSTR;                      // строка редактируемой высоты
+int altSet = 0;                     // введённая высота в метрах
+boolean altChange = false;          // включение/выключение режима ввода высоты
+boolean B3Alt = false;              // нажатие кнопки 3 в режиме ввода высоты
 
 boolean Stmp = false;               // переменная для вывода символа "B" (НЕОБЯЗАТЕЛЬНАЯ) 
 boolean longpress = false;          // переменная для проверки на долгое нажатие кнопки
@@ -266,6 +274,7 @@ void saveSettings()
 void exitMenu()
 {
   askSave = false;                    // убираем экран вопроса
+  altChange = false;                  // выключаем режим ввода высоты
   MainMenu = false;                   // закрываем меню
   menuCount = 0;                      // обнуляем счётчик режимов меню
   symCount = 0;                       // обнуляем счётчик символов
@@ -600,7 +609,57 @@ void Menu()                                                                     
     else if (menuCount == 7) {TresholdAB();}                                      // если выбран 8 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при снижении
     else if (menuCount == 8) {TresholdABUp();}                                    // если выбран 9 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при подъёме
     else if (menuCount == 9) {VarioMode();}                                       // если выбран 10 экран меню, запускаем подпрограмму выбора режима работы вариометра (Standard/Thermal)
+    else if (menuCount == 10) {SetAltitude();}                                    // если выбран 11 экран меню, запускаем подпрограмму установки высоты
 }                                                                                 //
+
+///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
+char nextDigit(char c)              // следующая цифра (после 9 снова 0)
+{
+  byte v = int(c);                  //
+  v++;                              //
+  if (v == 58) {v = 48;}            //
+  return char(v);                   //
+}
+
+void altToDigits(int v)             // раскладываем высоту по четырём символам
+{
+  if (v < 0) {v = 0;}               //
+  if (v > 9999) {v = 9999;}         //
+  t0 = char(48+(v/1000)%10);        //
+  t1 = char(48+(v/100)%10);         //
+  t2 = char(48+(v/10)%10);          //
+  t3 = char(48+v%10);               //
+}
+
+void SetAltitude()
+{
+  if (B3Alt == true)                                                              // если нажата кнопка 3, меняем выбранную цифру
+    {
+      if (symCount == 0) {t0 = nextDigit(t0);}                                    //
+      if (symCount == 1) {t1 = nextDigit(t1);}                                    //
+      if (symCount == 2) {t2 = nextDigit(t2);}                                    //
+      if (symCount == 3) {t3 = nextDigit(t3);}                                    //
+      B3Alt = false;                                                              //
+    }
+  altSTR = (String)t0+t1+t2+t3;                                                   // собираем строку высоты
+  lcd.setCursor(0,1);                                                             //
+  lcd.print("Set alt. ");                                                         // рисуем строку "Set alt."
+  lcd.setCursor(11,1);                                                            //
+  lcd.print(altSTR+"m");                                                          // выводим высоту в метрах
+  if (altChange == true)                                                          // если включён режим ввода...
+    {
+      lcd.setCursor(11,0);                                                        //
+      lcd.print("    ");                                                          // стираем старый курсор
+      lcd.setCursor((11+symCount),0);                                             //
+      lcd.print("v");                                                             // рисуем курсор над выбранной цифрой
+    }
+  else                                                                            //
+    {
+      lcd.setCursor(11,0);                                                        //
+      lcd.print("     ");                                                         // стираем курсор
+    }
+}
+
 
 ///// ПРОЦЕДУРА ИЗМЕНЕНИЯ ЗНАЧЕНИЯ ДАВЛЕНИЯ ПО МОРЮ / SEA PRESSURE VALUE CHANGE PROCEDURE /////
 void SeaPresChange()
@@ -888,10 +947,10 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           {
             exitMenu();                                                                   // ... выполняем ответ и выходим из меню
           }
-        else if (presChange == false)                                                     // иначе листаем страницы меню
+        else if ((presChange == false) && (altChange == false))                                                     // иначе листаем страницы меню
           {
             menuCount += 1;                                                               //
-            if (menuCount == 10) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 11) {menuCount = 0;}                                         // после последней страницы - снова первая
             lcd.clear();                                                                  //
           }
       }
@@ -948,18 +1007,23 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
       }
     else
       {                                                                                   //
-        if (presChange == false)                                                          // если ВЫКЛЮЧЕН режим ввода символов для давления по морю...
+        if (presChange == true)                                                           // если идёт ввод давления...
           {                                                                               //
-            menuCount += 1;                                                               // ...выбор окна меню
-            if (menuCount == 10) {menuCount = 0;}                                         // если счётчик больше десяти, то присваиваем 0, т.е. первый экран меню
+            symCount += 1;                                                                // ... двигаем курсор по цифрам давления
+            if (symCount == 4) {symCount += 1;}                                           // пропускаем позицию точки
+            if (symCount == 6) {symCount = 0;}                                            // после последней цифры - снова первая
           }                                                                               //
-        else                                                                              // если ВКЛЮЧЕН режим редактирования давления, то...
+        else if (altChange == true)                                                       // если идёт ввод высоты...
           {                                                                               //
-            symCount += 1;                                                                // увеличиваем счётчик выбранного символа (до четвертого символа) на 1
-            if (symCount == 4) {symCount += 1;}                                           // с четвертого начинаем прибавлять дополнительную единицу, что бы перескочить запятую
-            if (symCount == 6) {symCount = 0;}                                            // если счетчик дошел до 7 символа, то обнуляем (т.к. в нашем float шесть символов)
-          }                                                                               // 
-      }                                                                                   // 
+            symCount += 1;                                                                // ... двигаем курсор по цифрам высоты
+            if (symCount == 4) {symCount = 0;}                                            // после последней цифры - снова первая
+          }                                                                               //
+        else                                                                              // иначе листаем страницы меню
+          {                                                                               //
+            menuCount += 1;                                                               //
+            if (menuCount == 11) {menuCount = 0;}                                         // после последней страницы - снова первая
+          }                                                                               //
+      }                                                                                   //
   }                                                                                       // 
 
 ///// ДЛИННОЕ НАЖАТИЕ КНОПКИ 2 / BUTTON 2 LONG PRESS /////
@@ -987,26 +1051,50 @@ if (Buttom2.click())                                                            
       }                                                                                   //
     else if (askSave == false)                                                                                  // ... если мы, всё-таки, в МЕНЮ ...
       {                                                                                   //
-        if (presChange == false)                                                          // ... и если ВЫКЛЮЧЕН режим редактирования давления, то...
+        if (menuCount == 0)                                                               // на странице "Sea pres." - ввод давления
           {                                                                               //
-            presChange = true;                                                            // включаем режим редактирования давления
-              presTMP = presSea;                                                          // присваиваем переменной presTMP значение дефолтного давления для дальнейших расчетов
-              presSTR = presToStr(presTMP);                                            // строка формата 1013.2 (hPa)
-              s0 = presSTR[0];                                                            // строка s0 = 0 символ из presSTR
-              s1 = presSTR[1];                                                            // строка s1 = 1 символ из presSTR
-              s2 = presSTR[2];                                                            // строка s2 = 2 символ из presSTR
-              s3 = presSTR[3];                                                            // строка s3 = 3 символ из presSTR
-              s4 = presSTR[5];                                                            // строка s4 = 4 символ из presSTR
-          }                                                                               // 
-        else                                                                              // ... если режим редактирования давления ВКЛЮЧЕН, то...
+            if (presChange == false)                                                      // ... если режим ввода выключен
+              {                                                                           //
+                presChange = true;                                                        // включаем режим ввода давления
+                presTMP = presSea;                                                        //
+                presSTR = presToStr(presTMP);                                             //
+                s0 = presSTR[0];                                                          //
+                s1 = presSTR[1];                                                          //
+                s2 = presSTR[2];                                                          //
+                s3 = presSTR[3];                                                          //
+                s4 = presSTR[5];                                                          //
+                symCount = 0;                                                             //
+              }                                                                           //
+            else                                                                          // ... если режим ввода включён
+              {                                                                           //
+                presChange = false;                                                       // принимаем введённое давление
+                presSea = presTMP;                                                        //
+                symCount = 0;                                                             //
+                altSEATmp = 0;                                                            //
+                saveSettings();                                                           // сохраняем давление в память
+              }                                                                           //
+          }                                                                               //
+        if (menuCount == 10)                                                              // на странице "Set alt." - ввод высоты
           {                                                                               //
-            presChange = false;                                                           // выключаем режим редактирования
-            presSea = presTMP;                                                            // присваиваем переменной presSea, которая используется в формуле расчета высоты, введенное давление
-            symCount = 0;                                                                 // сбрасываем счётчик символов на ноль
-            altSEATmp = 0;                                                                // обнуление корректируемой высоты (нужно, что бы, при ранее обнулённой высоте у моря, значение вернулось к расчетному по давлению)
-            saveSettings();                                                           // сохраняем принятое давление
-          }                                                                               // 
-      }                                                                                   // 
+            if (altChange == false)                                                       // ... если режим ввода выключен
+              {                                                                           //
+                altChange = true;                                                         // включаем режим ввода высоты
+                altToDigits(altitudeSEA);                                                 // начинаем с текущей высоты над уровнем моря
+                symCount = 0;                                                             //
+              }                                                                           //
+            else                                                                          // ... если режим ввода включён
+              {                                                                           //
+                altChange = false;                                                        // принимаем введённую высоту
+                altSet = altSTR.toInt();                                                  //
+                presSea = (sensor.pres*MMHG_TO_HPA)*exp(float(altSet)/(29.21*(sensor.temp+273.15)));   // считаем давление на уровне моря из высоты
+                presTMP = presSea;                                                        //
+                presSTR = presToStr(presSea);                                             //
+                symCount = 0;                                                             //
+                altSEATmp = 0;                                                            //
+                saveSettings();                                                           // сохраняем давление в память
+              }                                                                           //
+          }                                                                               //
+      }                                                                                   //
     longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
     lcd.clear();                                                                          // очистка экрана
   }                                                                                       // 
@@ -1034,6 +1122,10 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
         if (presChange == true)                                                           // ... если также включен режим редактирования давления, то
           {                                                                               //
             B3Pres = true;                                                                // фиксируем факт нажатия КНОПКИ 3 (используется в подпрограмме SeaPresChange() для увеличения значения выбранного символа)
+          }                                                                               //
+        if (altChange == true)                                                             // ... если включён режим ввода высоты
+          {                                                                               //
+            B3Alt = true;                                                                 // отмечаем факт нажатия кнопки 3
           }                                                                               //
         if (menuCount == 1)                                                               // ...если мы в режиме редактирования порога срабатывания на подъеме
           {                                                                               // 
