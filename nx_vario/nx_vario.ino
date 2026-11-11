@@ -116,7 +116,7 @@ byte TrUPcount = 0;                 // счётчик для выбора зна
 byte TrDNcount = 3;                 // счётчик для выбора значения порога срабатывания на сливе из массива возможных вариантов      - МОЖНО МЕНЯТЬ только в паре с vario_down, номер ячейки брать из массива treshDN!!!
 byte cnt = 4;                       // счётчик нажатий кнопки 1
 byte volCount = 3;                  // громкость пищалки: 0-OFF, 1-LOW, 2-MED, 3-MAX
-const byte volDuty[4] = {0, 4, 14, 50};  // МОЖНО МЕНЯТЬ!!! скважность ШИМ для каждой громкости, %
+const byte volDuty[4] = {0, 2, 6, 15};  // МОЖНО МЕНЯТЬ!!! скважность ШИМ для каждой громкости, %
 unsigned long toneOff = 0;          // время, когда нужно выключить звук
 byte menuCount = 0;                 // счётчик для выбора режима меню
 byte windowCount = 0;               // счётчик для выбора окна
@@ -1123,7 +1123,7 @@ if ((tempo-beep)>Beep_period)                                           //
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     gLEDtmp = true;                                                     // зеленый светодиод на подъеме
     Beep_period = 350-(vario*80);                                       //
-    playTone((2000+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
+    playTone((600+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
   }                                                                     //
   else if ((vario<vario_down))                      // звук на сливе
   {                                                                     //
@@ -1131,7 +1131,7 @@ if ((tempo-beep)>Beep_period)                                           //
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     rLEDtmp = true;                                                     // красный светодиод на сливе
     Beep_period=40;                                                     // update pitch every 40 ms (continuous tone)
-    playTone(constrain(int(1000+(170*vario)),300,1200),150);   // continuous sink tone: lower pitch the faster you sink
+    playTone(constrain(int(600+(110*vario)),260,900),150);   // continuous sink tone: lower pitch the faster you sink
   }                                                                     //
 }                                                                       //
 }                                                                       //
