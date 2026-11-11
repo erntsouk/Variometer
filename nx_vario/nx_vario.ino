@@ -34,8 +34,6 @@ SBB_CLICK Buttom3(6,1);             // создаём экземпляр кла�
 
 float vario_down = -1.1;            // Установка порогового значения СНИЖЕНИЯ для запуска пищалки         - МОЖНО МЕНЯТЬ только в паре с TrDNcount, значения брать из массива treshDN!!!
 float vario_up = 0.1;               // Установка порогового значения ПОДЪЁМА для запуска пищалки          - МОЖНО МЕНЯТЬ только в паре с TrUPcount, значения брать из массива treshUP!!!
-float vario_fall = -3.0;            // Установка порогового значения сработки сигнализации при ПАДЕНИИ    - МОЖНО МЕНЯТЬ только в паре с TrFLcount, значения брать из массива treshFL!!!
-float vario_fall_tmp = 0;           // Временная переменная для хранения значения vario_fall (при ВКЛ/ВЫКЛ теста СИГНАЛИЗАЦИИ при ПАДЕНИИ)
 float beep;                         // переменная для вывода звука при работе вариометра                  
 float Beep_period;                  // переменная для вывода звука при работе вариометра                  
 float vario = 0;                    // переменная вариометра                                              
@@ -54,13 +52,8 @@ float alt[51];                                                          // Ма�
 float tim[51];                                                          // Массив tim переменных типа float (для работы усреднителя), начальная размерность 51, моя 41 
 float treshUP[5] = {0.1, 0.4, 0.5, 0.6, 0.7};                           // Массив, содержащий значения срабатывания вариометра при подъёме                       - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_up и TrUPcount
 float treshDN[5] = {-0.5, -0.7, -0.9, -1.1, -1.3};                      // Массив, содержащий значения срабатывания вариометра при спуске                        - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_down и TrDNcount
-float treshFL[8] = {-999.0, -2.5, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0};  // Массив значений срабатывания сигнализации при ПАДЕНИИ                                 - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_fall и TrFLcount
 
-int treshAB[8] = {9999, 20, 30, 50, 100, 150, 200, 250};            // Массив значений срабатывания длинного сигнала при проходе пороговой высоты на снижении    - МОЖНО МЕНЯТЬ!!!
-int treshABUp[9] = {9999, 50, 100, 150, 200, 250, 300, 400, 500};   // Массив значений срабатывания длинного сигнала при проходе пороговой высоты на подъёме     - МОЖНО МЕНЯТЬ!!!
 
-int alt_beep = 9999;                // Установка порогового значения для длинного сигнала при проходе пороговой высоты на снижении
-int alt_beep_up = 9999;             // Установка порогового значения для длинного сигнала при проходе пороговой высоты на подъёме
 int altTmp = 0;                     // переменная для вычисления высоты при обнулении КНОПКОЙ 1 (высота = высота с датчика - сохранённая высота в данной точке (altTmp))
 int altTmpAdd = 0;                  // переменная для вычисления дополнительной высоты при обнулении КНОПКОЙ 1 (высота = высота с датчика - сохранённая высота в данной точке (altTmpAdd))
 int altSEATmp = 0;                  // переменная для вычисления высоты, необходимой при обнулении максимального значения в ГЛАВНОМ ЭКРАНЕ 2
@@ -104,15 +97,9 @@ boolean presChange = false;         // включение/выключение �
 boolean B3Pres = false;             // увеличение символа в строке давления на единицу, если есть факт нажатия кнопки
 boolean TresUPchange = false;       // флаг для изменения значения порога срабатывания на подъёме при нажатии клавиши 3
 boolean TresDNchange = false;       // флаг для изменения значения порога срабатывания на сливе при нажатии клавиши 3
-boolean TresFLchange = false;       // флаг для изменения значения порога срабатывания при ПАДЕНИИ при нажатии клавиши 3
-boolean TresABchange = false;       // флаг ВКЛ/ВЫКЛ режима длительного сигнала при проходе пороговой высоты на снижении
-boolean TresABUpchange = false;     // флаг ВКЛ/ВЫКЛ режима длительного сигнала при проходе пороговой высоты на подъёме
 boolean AlarmFlag = false;          // флаг для работы сигнализации при падении
 boolean Alarm = false;              // флаг ВКЛ/ВЫКЛ сигнализации при падении
 boolean AfterAlarmFlag = false;     // флаг для затирания оставшихся после тревоги символов
-boolean AlarmTestFlag = false;      // флаг ВКЛ/ВЫКЛ тестового режима СИГНАЛИЗАЦИИ при ПАДЕНИИ
-boolean AltBeepFlag = true;         // флаг для задержки после срабатывания сигнала на снижении при проходе порога высоты
-boolean AltUpBeepFlag = true;       // флаг для задержки после срабатывания сигнала на подъёме при проходе порога высоты
 boolean AltDifTmpFlag = false;      // флаг проверки был ли сброс высоты, или нет (единый для всех высот, но в коде выбирается проверка по значению cnt)
 boolean Thermal_ON = false;         // флаг проверки включения режима Thermal для вариометра
 
@@ -121,19 +108,16 @@ static char outvario[5];            // массив символов для от
 static char outalt[5];              // массив символов для отображения высоты
 static char outTrUP[4];             // массив символов для отображения корректируемого порога срабатывания на подъёме (в МЕНЮ)
 static char outTrDN[4];             // массив символов для отображения корректируемого порога срабатывания на сливе (в МЕНЮ)
-static char outTrFL[4];             // массив символов для отображения корректируемого порога срабатывания при ПАДЕНИИ (в МЕНЮ)
-static char outTrAB[5];             // массив символов для отображения корректируемого порога высоты для работы длинного сигнала на снижении (в МЕНЮ)
-static char outTrABUp[5];           // массив символов для отображения корректируемого порога высоты для работы длинного сигнала на подъёме (в МЕНЮ)
 static char outtime[4];             // массив символов для отображения времени
 
 unsigned long timeZero = 0;         // переменная для обнуления таймера (ИМЕННО unsigned long!!!)
 
 byte TrUPcount = 0;                 // счётчик для выбора значения порога срабатывания на подъёме из массива возможных вариантов    - МОЖНО МЕНЯТЬ только в паре с vario_up, номер ячейки брать из массива treshUP!!!
 byte TrDNcount = 3;                 // счётчик для выбора значения порога срабатывания на сливе из массива возможных вариантов      - МОЖНО МЕНЯТЬ только в паре с vario_down, номер ячейки брать из массива treshDN!!!
-byte TrFLcount = 2;                 // счётчик для выбора значения порога срабатывания при ПАДЕНИИ из массива возможных вариантов   - МОЖНО МЕНЯТЬ только в паре с vario_fall, номер ячейки брать из массива treshFL!!!
-byte TrABcount = 0;                 // счётчик для выбора значения порога высоты для срабатывания длинного писка при снижении       - МОЖНО МЕНЯТЬ!!!
-byte TrABUpcount = 0;               // счётчик для выбора значения порога высоты для срабатывания длинного писка при подъёме        - МОЖНО МЕНЯТЬ!!!
 byte cnt = 4;                       // счётчик нажатий кнопки 1
+byte volCount = 3;                  // громкость пищалки: 0-OFF, 1-LOW, 2-MED, 3-MAX
+const byte volDuty[4] = {0, 4, 14, 50};  // МОЖНО МЕНЯТЬ!!! скважность ШИМ для каждой громкости, %
+unsigned long toneOff = 0;          // время, когда нужно выключить звук
 byte menuCount = 0;                 // счётчик для выбора режима меню
 byte windowCount = 0;               // счётчик для выбора окна
 byte symCount = 0;                  // номер вводимого символа (ввод давления)
@@ -234,28 +218,25 @@ byte arrow_e_down[8]                // кодируем символ пусто�
 ///// СОХРАНЕНИЕ НАСТРОЕК В ПАМЯТЬ / SAVED SETTINGS (EEPROM) /////
 struct SavedSettings {
   uint16_t magic;
-  byte TrUP, TrDN, TrFL, TrAB, TrABUp;
+  byte TrUP, TrDN, vol;
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55A       // если изменить это число, сохранённые настройки сбросятся
+#define SETTINGS_MAGIC 0xA55B       // если изменить это число, сохранённые настройки сбросятся
 
 void applySettings()
 {
   vario_up = treshUP[TrUPcount];
   vario_down = treshDN[TrDNcount];
-  vario_fall = treshFL[TrFLcount];
-  alt_beep = treshAB[TrABcount];
-  alt_beep_up = treshABUp[TrABUpcount];
 }
 
 void loadSettings()
 {
   SavedSettings s;
   EEPROM.get(0, s);
-  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.TrFL < 8 && s.TrAB < 8 && s.TrABUp < 9 && s.presSea > 300.0 && s.presSea < 1200.0)
+  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.presSea > 300.0 && s.presSea < 1200.0)
     {
-      TrUPcount = s.TrUP; TrDNcount = s.TrDN; TrFLcount = s.TrFL; TrABcount = s.TrAB; TrABUpcount = s.TrABUp;
+      TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol;
       LED_ON = s.led; button_beep_ON = s.btnBeep; Thermal_ON = s.thermal;
       presSea = s.presSea;
     }
@@ -265,7 +246,7 @@ void saveSettings()
 {
   SavedSettings s;
   s.magic = SETTINGS_MAGIC;
-  s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.TrFL = TrFLcount; s.TrAB = TrABcount; s.TrABUp = TrABUpcount;
+  s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount;
   s.led = LED_ON; s.btnBeep = button_beep_ON; s.thermal = Thermal_ON;
   s.presSea = presSea;
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
@@ -312,7 +293,7 @@ void setup()
   loadSettings();                   // читаем сохранённые настройки из энергонезависимой памяти
   presTMP = presSea;                // временная переменная давления (для расчётов) = дефолтное давление (presSea используется в формуле расчёта высоты)
   presSTR = presToStr(presTMP);        // преобразование давления из float в String
-  applySettings();                  // применяем пороги из сохранённых настроек (vario_up, vario_down, vario_fall, alt_beep, alt_beep_up)
+  applySettings();                  // применяем пороги из сохранённых настроек (vario_up, vario_down)
   
   pinMode(p, OUTPUT);               // установка пина 3 в output (это пин пищалки)
   pinMode(gLED, OUTPUT);            // установка пина 7 в output (это пин зеленого светодиода)
@@ -354,9 +335,10 @@ void setup()
   lcd.setCursor(5,1);               //
   lcd.print(String(presSea,1)+" hPa");   // выводим стартовое давление в hPa
   delay(1000);                      // задержка 2 секунды
-  tone(p,(2500),70);                // двойной сигнал при запуске прибора  
-  delay(150);                       //
-  tone(p,(2500),70);                //
+  playTone((2500),70);                // двойной сигнал при запуске прибора  
+  beepDelay(150);                       //
+  playTone((2500),70);                //
+  beepDelay(70);                   //
   lcd.clear();                      // очищаем экран перед отображением главного окна
   
   sensor.begin();                   // инициализация сенсора bmp180. в скобках можно указать начальную высоту в метрах 
@@ -480,83 +462,52 @@ if (windowCount == 2)                                                   // ес�
     lcd.print("Min Var:   "); lcd.print(minVario);                      // печатаем минимальное значение вариометра
   }                                                                     //
 }                                                                       //
-///// ВЫВОД ЭКРАНА ТРЕВОГИ / ALARM SCREEN OUTPUT /////
-else                                                                    // ОТОБРАЖЕНИЕ ЭКРАНА ТРЕВОГИ
-{                                                                       //
-  if ((altitude-altdif)>=100)                                           // Если высота больше или равна 100 метрам, то просто предупреждаем о ПАДЕНИИ
-    {                                                                   //
-      lcd.setCursor(0,0);                                               //
-      lcd.print(" ALARM! FALLING!");                                    // пишем ALARM!  FALLING! ...
-      lcd.setCursor(0,1);                                               //
-      lcd.print("       "+String(altitude-altdif)+"m      ");           // ...и показываем значение высоты
-    }                                                                   //
-  else                                                                  // если высота меньше 100 метров, то...
-    {                                                                   //
-      lcd.setCursor(0,0);                                               //
-      lcd.print("DEPLOY PARACHUTE");                                    // ...рисуем на экране необходимость РАСКРЫТЬ ПАРАШЮТ...
-      lcd.setCursor(0,1);                                               //
-      lcd.print("       "+String(altitude-altdif)+"m      ");           // ...и показываем значение высоты
-    }                                                                   //
-}                                                                       //
-}                                                                       //
+}                                                                       // конец вывода на экран
 
-///// ДЛИННЫЙ ПИСК ПРИ ПРОХОЖДЕНИИ ПОРОГА ВЫСОТЫ НА СНИЖЕНИИ / LONG BEEP WHILE DESCENT (at certain height)/////
-void Altitude_BEEP()                                                    // 
-{                                                                       //
-  tone(p,3000,1500);                                                    //
-  delay(1500);                                                          //
-}                                                                       //
+///// ЗВУК С РЕГУЛИРОВКОЙ ГРОМКОСТИ / TONE WITH VOLUME CONTROL /////
+///// Пищалка на пине 3 (OC2B). Частоту задаёт таймер 2, громкость - скважность ШИМ.
+void stopTone()                                                         // выключаем звук
+{
+  TCCR2A = 0;                                                           //
+  TCCR2B = 0;                                                           //
+  digitalWrite(p, LOW);                                                 //
+  toneOff = 0;                                                          //
+}
 
-///// ДЛИННЫЙ ПИСК ПРИ ПРОХОЖДЕНИИ ПОРОГА ВЫСОТЫ НА ПОДЪЁМЕ / LONG BEEP WHILE CLIMB (at certain height)/////
-void Altitude_BEEP_Up()                                                 //
-{                                                                       //
-  tone(p,2500,1000);                                                    //
-  delay(1000);                                                          //
-}                                                                       //
+void playTone(unsigned int freq, unsigned int dur)                      // звук заданной частоты и длительности
+{
+  if (volCount == 0) {stopTone(); return;}                              // громкость OFF - молчим
+  if (freq < 250) {freq = 250;}                                         // ниже таймер 2 не может
+  if (freq > 5000) {freq = 5000;}                                       //
+  byte top = (62500UL / freq) - 1;                                      // предделитель 256
+  OCR2A = top;                                                          // частота
+  OCR2B = (unsigned int)top * volDuty[volCount] / 100;                  // громкость
+  TCCR2A = _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);                       // быстрый ШИМ на OC2B
+  TCCR2B = _BV(WGM22) | _BV(CS22) | _BV(CS21);                          // TOP = OCR2A, предделитель 256
+  toneOff = millis() + dur;                                             // когда выключить
+}
 
-///// СИГНАЛИЗАЦИЯ ПРИ ПАДЕНИИ / ALARM WHILE FALLING /////
-void Alarm_FALL()                                                       // СИГНАЛИЗАЦИЯ ПРИ ПАДЕНИИ
-{                                                                       // 
-  Alarm = true;                                                         // Тревога - истина
-  AfterAlarmFlag = true;                                                // Взводим флаг очистки экрана после тревоги
-  rLEDtmp = true;                                                       // Зажигаем красный светодиод
-  gLEDtmp = true;                                                       // Зажигаем зеленый светодиод
-  if ((altitude-altdif)>=100)                                           // Если высота больше или равна 100 метрам, то...
-    {                                                                   // ...медленный писк сирены низкой частоты с одновременным зажиганием светодиодов
-      if (AlarmFlag == false)                                           // При этом положении флага Alarm частота сирены 2000
-        {                                                               // 
-          tone(p,2000,500);                                             // Вывод звука
-          AlarmFlag = true;                                             // Меняем значение флага
-        }                                                               // 
-      else                                                              // При противоположном положении флага Alarm частота сирены 1000
-        {                                                               // 
-          tone(p,1000,500);                                             // Вывод звука
-          AlarmFlag = false;                                            // Меняем значение флага
-        }                                                               // 
-    }                                                                   //
-  else                                                                  // ...Иначе (если высота меньше 100 метров)...
-    {                                                                   // ...быстрый писк сирены высокой частоты с попеременным зажиганием светодиодов
-      tone(p,4000,250);                                                 // Вывод звука
-      digitalWrite(rLED, HIGH);                                         // зажигаем красный
-      digitalWrite(gLED, LOW);                                          // гасим зеленый
-      delay(150);                                                       // 
-      tone(p,2000,250);                                                 // Вывод звука
-      digitalWrite(rLED, LOW);                                          // гасим красный
-      digitalWrite(gLED, HIGH);                                         // зажигаем зеленый
-      delay(150);                                                       // 
-    }                                                                   //
-}                                                                       // 
+void toneService()                                                      // вызывается в каждом цикле - выключает звук вовремя
+{
+  if ((toneOff != 0) && (millis() >= toneOff)) {stopTone();}            //
+}
+
+void beepDelay(unsigned int ms)                                         // пауза, во время которой звук выключается вовремя
+{
+  unsigned long t = millis() + ms;                                      //
+  while (millis() < t) {toneService();}                                 //
+}
 
 ///// СИГНАЛ НАЖАТИЯ КНОПКИ / BUTTON BEEP /////
 void button_beep()                                                      // СИГНАЛ НАЖАТИЯ КНОПКИ
 {                                                                       //
-  if (button_beep_ON == true) {tone(p,1800,30);}                        // пищим только если в настройках включен звук клавиш
+  if (button_beep_ON == true) {playTone(1800,30); beepDelay(30);}                        // пищим только если в настройках включен звук клавиш
 }                                                                       //
 
 ///// ДЛИННЫЙ БИП / LONG BEEP /////
 void long_beep()                                                        // ДЛИННЫЙ БИП
 {                                                                       //
-  if (button_beep_ON == true) {tone(p,1800,200);}                       // пищим только если в настройках включен звук клавиш
+  if (button_beep_ON == true) {playTone(1800,200); beepDelay(200);}                       // пищим только если в настройках включен звук клавиш
 }                                                                       //
 
 ///// ТРОЙНОЙ БИП / TRIPLE BEEP /////
@@ -564,11 +515,11 @@ void triple_beep()                                                      // ТР�
 {                                                                       //
   if (button_beep_ON == true)                                           // пищим только если в настройках включен звук клавиш
   {                                                                     //
-    tone(p,1800,40);                                                    //
-    delay(80);                                                          //
-    tone(p,1800,40);                                                    //
-    delay(80);                                                          //
-    tone(p,1800,40);                                                    // 
+    playTone(1800,40);                                                    //
+    beepDelay(80);                                                          //
+    playTone(1800,40);                                                    //
+    beepDelay(80);                                                          //
+    playTone(1800,40);                                                    // 
   }                                                                     //
 }                                                                       //
 
@@ -577,11 +528,13 @@ void SSL_beep()                                                         // КО�
 {                                                                       //
   if (button_beep_ON == true)                                           // пищим только если в настройках включен звук клавиш
   {                                                                     //
-    tone(p,1800,40);                                                    //
-    delay(80);                                                          //
-    tone(p,1800,40);                                                    //
-    delay(80);                                                          //
-    tone(p,1800,150);                                                   // 
+    playTone(1800,40);                                                    //
+    beepDelay(80);                                                          //
+    playTone(1800,40);                                                    //
+    beepDelay(40);                                                       //
+    beepDelay(80);                                                          //
+    playTone(1800,150);                                                   // 
+    beepDelay(150);                                                      //
   }
 }
 
@@ -600,16 +553,13 @@ void Menu()                                                                     
 
   lcd.setCursor(0,0);                                                             //
   lcd.print("MENU "+String(menuCount+1)+"   ");                                   // выводим надпись MAIN MENU и номер окна меню на верхней строчке
-    if (menuCount == 0) {SeaPresChange();}                                        // если выбран 1 экран меню, запускаем подпрограмму вывода и изменения давления по морю
-    else if (menuCount == 1) {TresholdUP();}                                      // если выбран 2 экран меню, запускаем подпрограмму настройки порога срабатывания звука вариометра на подъёме
-    else if (menuCount == 2) {TresholdDN();}                                      // если выбран 3 экран меню, запускаем подпрограмму настройки порога срабатывания звука вариометра на сливе
-    else if (menuCount == 3) {LED_light();}                                       // если выбран 4 экран меню, запускаем подпрограмму ВКЛ/ВЫКЛ светодиодной индикации
-    else if (menuCount == 4) {ButtonBeep();}                                      // если выбран 5 экран меню, запускаем подпрограмму ВКЛ/ВЫКЛ звука клавиш
-    else if (menuCount == 5) {TresholdFL();}                                      // если выбран 6 экран меню, запускаем подпрограмму настройки порога срабатывания звука при ПАДЕНИИ
-    else if (menuCount == 6) {AlarmTest();}                                       // если выбран 7 экран меню, запускаем подпрограмму ВКЛ/ВЫКЛ режима тестирования сигнализации при ПАДЕНИИ (vario_fall=-0.3; altdif=altitude-altitudeSEA)
-    else if (menuCount == 7) {TresholdAB();}                                      // если выбран 8 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при снижении
-    else if (menuCount == 8) {TresholdABUp();}                                    // если выбран 9 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при подъёме
-    else if (menuCount == 9) {VarioMode();}                                       // если выбран 10 экран меню, запускаем подпрограмму выбора режима работы вариометра (Standard/Thermal)
+    if (menuCount == 0) {SeaPresChange();}                                        // 1 экран меню - давление по морю / высота
+    else if (menuCount == 1) {TresholdUP();}                                      // 2 экран меню - порог срабатывания на подъёме
+    else if (menuCount == 2) {TresholdDN();}                                      // 3 экран меню - порог срабатывания на снижении
+    else if (menuCount == 3) {LED_light();}                                       // 4 экран меню - ВКЛ/ВЫКЛ светодиодов
+    else if (menuCount == 4) {ButtonBeep();}                                      // 5 экран меню - ВКЛ/ВЫКЛ звука клавиш
+    else if (menuCount == 5) {VarioMode();}                                       // 6 экран меню - режим работы вариометра
+    else if (menuCount == 6) {VolumeSet();}                                       // 7 экран меню - громкость пищалки
 }                                                                                 //
 
 ///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -712,8 +662,6 @@ void SeaPresChange()                                                            
       lcd.setCursor(11,1);                                                        //
       lcd.print(altSTR+"m");                                                      // выводим высоту в метрах
     }
-  if (AlarmTestFlag == true)                                                      // если включён тест тревоги...
-    {altdif = altitude-altitudeSEA;}                                              // ... пересчитываем разницу высот
 }
 
 ///// ПРОЦЕДУРА ВЫБОРА ПОРОГА НА ПОДЪЁМЕ / SETTING TRESHOLD FOR CLIMB /////
@@ -748,94 +696,6 @@ void TresholdDN()                                                               
   lcd.print(String(outTrDN));                                                     // выводим на экран значение порога срабатывания на сливе
 }                                                                                 //
 
-///// ПРОЦЕДУРА ВЫБОРА ПОРОГА ПРИ ПАДЕНИИ / SETTING TRESHOLD FOR FALLING /////
-void TresholdFL()                                                                 // 
-{                                                                                 // 
-  lcd.setCursor(0,1);                                                             // 
-  lcd.print("Alarm set  ");                                                       // рисуем строку "Alarm set  "
-  lcd.print("     ");                                                             // затираем старые символы
-    if (TresFLchange == true)                                                     // если был факт нажатия КНОПКИ 3, то...
-      {                                                                           //
-        vario_fall = treshFL[TrFLcount];                                          // присваиваем переменной vario_fall (используется в при выводе звука при ПАДЕНИИ) новое значение из массива возможных значений
-        TresFLchange = false;                                                     // убираем факт нажатия КНОПКИ 3
-      }                                                                           // 
-  lcd.setCursor(12,1);                                                            // 
-  if (vario_fall>-999.0)                                                          // проверяем выбранное значение vario_fall (если больше -999.0, то рисуем значение переменной)
-    {                                                                             //
-      dtostrf(vario_fall, 4, 1, outTrFL);                                         // переводим значение vario_fall из float в массив символов для вывода на экран
-      lcd.print(String(outTrFL));                                                 // выводим на экран значение порога срабатывания при ПАДЕНИИ
-    }                                                                             //
-  else                                                                            // иначе (если vario_fall равно или меньше -999.0, т.е. факт выключения функции ТРЕВОГИ)
-    {                                                                             //
-      lcd.print(" OFF");                                                          // рисуем на экране значение OFF
-    }                                                                             // P.S. -999.0 - абстрактное значение, которое практически не может быть достигнуто, поэтому используется
-}                                                                                 // для обозначения отключения функции ТРЕВОГИ при ПАДЕНИИ
-
-///// ПРОЦЕДУРА ВЫБОРА ПОРОГОВОЙ ВЫСОТЫ ДЛЯ ДЛИННОГО ПИСКА НА СНИЖЕНИИ / SETTING ALT VALUE FOR LONG BEEP WHILE DESCENT /////
-void TresholdAB()                                                                 //
-{                                                                                 //
-  lcd.setCursor(0,1);                                                             // 
-  lcd.print("Alt DN beep");                                                       // рисуем строку "Height DN beep"
-  lcd.print("     ");                                                             // затираем старые символы
-    if (TresABchange == true)                                                     // если был факт нажатия КНОПКИ 3, то...
-      {                                                                           // thanks for averager algorithm to this project http://redhats.ru/variometer-arduino-2015/
-        alt_beep = treshAB[TrABcount];                                            // присваиваем переменной alt_beep (используется как порог для писка на снижении) новое значение из массива возможных значений
-        TresABchange = false;                                                     // убираем факт нажатия КНОПКИ 3
-      }                                                                           // 
-  lcd.setCursor(12,1);                                                            // 
-  if (alt_beep<9999)                                                              // проверяем выбранное значение alt_beep (если меньше 9999, то рисуем значение переменной)
-    {                                                                             //
-      dtostrf(alt_beep, 4, 0, outTrAB);                                           // переводим значение alt_beep из float в массив символов для вывода на экран
-      lcd.print(String(outTrAB));                                                 // выводим на экран значение пороговой высоты для срабатывания писка при снижении
-    }                                                                             //
-  else                                                                            // иначе (если alt_beep равно или больше 9999, т.е. факт выключения функции длинного сигнала на снижении)
-    {                                                                             //
-      lcd.print(" OFF");                                                          // рисуем на экране значение OFF
-    }                                                                             // P.S. 9999 - абстрактное значение, которое практически не может быть достигнуто, поэтому используется как маркер выключения функции
-}                                                                                 //
-
-///// ПРОЦЕДУРА ВЫБОРА ПОРОГОВОЙ ВЫСОТЫ ДЛЯ ДЛИННОГО ПИСКА НА ПОДЪЁМЕ / SETTING ALT VALUE FOR LONG BEEP WHILE CLIMB /////
-void TresholdABUp()                                                               //
-{                                                                                 //
-  lcd.setCursor(0,1);                                                             // 
-  lcd.print("Alt UP beep");                                                       // рисуем строку "Alt UP beep"
-  lcd.print("     ");                                                             // затираем старые символы
-    if (TresABUpchange == true)                                                   // если был факт нажатия КНОПКИ 3, то...
-      {                                                                           //
-        alt_beep_up = treshABUp[TrABUpcount];                                     // присваиваем переменной alt_beep (используется как порог для писка на снижении) новое значение из массива возможных значений
-        TresABUpchange = false;                                                   // убираем факт нажатия КНОПКИ 3
-      }                                                                           // 
-  lcd.setCursor(12,1);                                                            // 
-  if (alt_beep_up<9999)                                                           // проверяем выбранное значение alt_beep (если меньше 9999, то рисуем значение переменной)
-    {                                                                             //
-      dtostrf(alt_beep_up, 4, 0, outTrABUp);                                      // переводим значение alt_beep из float в массив символов для вывода на экран
-      lcd.print(String(outTrABUp));                                               // выводим на экран значение пороговой высоты для срабатывания писка при снижении
-    }                                                                             //
-  else                                                                            // иначе (если alt_beep равно или больше 9999, т.е. факт выключения функции длинного сигнала на снижении)
-    {                                                                             //
-      lcd.print(" OFF");                                                          // рисуем на экране значение OFF
-    }                                                                             // P.S. 9999 - абстрактное значение, которое практически не может быть достигнуто, поэтому используется как маркер выключения функции
-}                                                                                 //
-
-///// ПОДПРОГРАММА ТЕСТИРОВАНИЯ СИГНАЛИЗАЦИИ ПРИ ПАДЕНИИ / FALLING ALARM TEST PROCEDURE /////
-void AlarmTest()                                                                  //
-{                                                                                 //
-  lcd.setCursor(0,1);                                                             // 
-  lcd.print("Alarm test ");                                                       // рисуем строку "Alarm test "
-  lcd.print("     ");                                                             // затираем старые символы
-  lcd.setCursor(12,1);                                                            // 
-  if (AlarmTestFlag == true)                                                      // 
-    {                                                                             //
-      lcd.print(" ON ");                                                          // рисуем на экране значение ON
-      altdif = altitude-altitudeSEA;                                              // вычисляем разницу высот
-    }                                                                             //
-  else                                                                            // 
-    { /*c0de 6y I1iushеnko Andrеi, nuclеar_XОNIX*/                                //
-      lcd.print(" OFF");                                                          // рисуем на экране значение OFF
-      altdif = 0;                                                                 // обнуляем разницу высот
-    }                                                                             //
-}                                                                                 //
-
 ///// ВКЛ/ВЫКЛ СВЕТОДИОДОВ / LED SETTING ON/OFF /////
 void LED_light()                                                                  //
 {                                                                                 //
@@ -847,6 +707,19 @@ void LED_light()                                                                
 }                                                                                 //
 
 ///// ПОДПРОГРАММА ВЫБОРА РЕЖИМА ВАРИОМЕТРА / VARIO MODE SET /////
+///// ГРОМКОСТЬ ПИЩАЛКИ / BUZZER VOLUME /////
+void VolumeSet()                                                                  //
+{                                                                                 //
+  lcd.setCursor(0,1);                                                             //
+  lcd.print("Volume     ");                                                       // рисуем строку "Volume"
+  lcd.setCursor(12,1);                                                            //
+  if (volCount == 0) {lcd.print(" OFF");}                                         //
+  else if (volCount == 1) {lcd.print(" LOW");}                                    //
+  else if (volCount == 2) {lcd.print(" MED");}                                    //
+  else {lcd.print(" MAX");}                                                       //
+}                                                                                 //
+
+///// РЕЖИМ РАБОТЫ ВАРИОМЕТРА / VARIO MODE SET /////
 void VarioMode()                                                                  //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
@@ -893,6 +766,7 @@ void ButtonBeep()                                                               
 ///// ГЛАВНЫЙ ЦИКЛ / MAIN CYCLE /////
 void loop()                                                                               //
 {                                                                                         //
+toneService();                                                          // выключаем звук, когда пришло время
 if (sensor.read(3))                                                                       // проверка на наличие данных с датчика 
 {                                                                                         // чтение параметров с датчика bmp180. в скобках могут быть значения чувствительности от 0 до 3. 3 - максимум 
 if (vario>-0.3) {Alarm = false;}                                                          // проверка ВКЛ/ВЫКЛ сигнала тревоги при падении
@@ -921,7 +795,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
         else if ((presChange == false) && (altChange == false))                                                     // иначе листаем страницы меню
           {
             menuCount += 1;                                                               //
-            if (menuCount == 10) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 7) {menuCount = 0;}                                         // после последней страницы - снова первая
             lcd.clear();                                                                  //
           }
       }
@@ -992,7 +866,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // иначе листаем страницы меню
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 10) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 7) {menuCount = 0;}                                         // после последней страницы - снова первая
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
@@ -1099,75 +973,39 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             symCount = 0;                                                                 //
             lcd.clear();                                                                  //
           }                                                                               //
-        if (menuCount == 1)                                                               // ...если мы в режиме редактирования порога срабатывания на подъеме
-          {                                                                               // 
-            TresUPchange = true;                                                          // запоминаем факт нажатия кнопки в меню редактирования порога срабатывания на подъёме
-            TrUPcount++;                                                                  // счётчик для выбора значения из массива возможных вариантов
-            if (TrUPcount == 5) {TrUPcount = 0;}                                          // если больше четырёх, то обнуляем
+        if (menuCount == 1)                                                               // ...если мы в режиме порога срабатывания на подъёме
+          {                                                                               //
+            TresUPchange = true;                                                          //
+            TrUPcount++;                                                                  //
+            if (TrUPcount == 5) {TrUPcount = 0;}                                          //
           }                                                                               //
-        if (menuCount == 2)                                                               // ...если мы в режиме редактирования порога срабатывания на сливе
-          {                                                                               // 
-            TresDNchange = true;                                                          // запоминаем факт нажатия кнопки в меню редактирования порога срабатывания на сливе
-            TrDNcount++;                                                                  // счётчик для выбора значения из массива возможных вариантов
-            if (TrDNcount == 5) {TrDNcount = 0;}                                          // если больше двух, то обнуляем
+        if (menuCount == 2)                                                               // ...если мы в режиме порога срабатывания на снижении
+          {                                                                               //
+            TresDNchange = true;                                                          //
+            TrDNcount++;                                                                  //
+            if (TrDNcount == 5) {TrDNcount = 0;}                                          //
           }                                                                               //
-        if (menuCount == 3)                                                               // ...если мы в режиме ВКЛ/ВЫКЛ светодиодной индикации
-          {                                                                               // 
-            if (LED_ON == true)                                                           // ... и если светодиоды включены
-              {LED_ON = false;}                                                           // то выключаем
-            else                                                                          // иначе
-              {LED_ON = true;}                                                            // включаем
+        if (menuCount == 3)                                                               // ...если мы в режиме ВКЛ/ВЫКЛ светодиодов
+          {                                                                               //
+            if (LED_ON == true) {LED_ON = false;}                                         //
+            else {LED_ON = true;}                                                         //
           }                                                                               //
         if (menuCount == 4)                                                               // ...если мы в режиме ВКЛ/ВЫКЛ звука клавиш
-          {                                                                               // 
-            if (button_beep_ON == true)                                                   // ... и если звук включен
-              {button_beep_ON = false;}                                                   // то выключаем
-            else                                                                          // иначе
-              {button_beep_ON = true;}                                                    // включаем
+          {                                                                               //
+            if (button_beep_ON == true) {button_beep_ON = false;}                         //
+            else {button_beep_ON = true;}                                                 //
           }                                                                               //
-        if (menuCount == 5)                                                               // ...если мы в режиме настройки значения ПАДЕНИЯ
-          {                                                                               // 
-            TresFLchange = true;                                                          // 
-            TrFLcount++;                                                                  // 
-            if (TrFLcount == 8) {TrFLcount = 0;}                                          // если больше четырёх, то обнуляем
+        if (menuCount == 5)                                                               // ...если мы в режиме выбора работы вариометра
+          {                                                                               //
+            if (Thermal_ON == true) {Thermal_ON = false;}                                 //
+            else {Thermal_ON = true;}                                                     //
           }                                                                               //
-        if (menuCount == 6)                                                               // ...если мы в режиме выбора ВКЛ/ВЫКЛ режима тестирования СИГНАЛИЗАЦИИ при ПАДЕНИИ
-          {                                                                               // 
-            if (AlarmTestFlag == false)                                                   // если режим тестирования ВЫКЛЮЧЕН, то
-              {                                                                           // 
-                AlarmTestFlag = true;                                                     // включаем его
-                vario_fall_tmp = vario_fall;                                              // временной переменной присваиваем значение vario_fall для дальнейшего присвоения обратно при выключении режима
-                vario_fall = -0.3;                                                        // присваиваем vario_fall значение -0.3
-              }                                                                           //
-            else                                                                          // если режим тестирования ВКЛЮЧЕМ, то
-              {                                                                           // 
-                AlarmTestFlag = false;                                                    // выключаем его
-                vario_fall = vario_fall_tmp;                                              // возвращаем переменной vario_fall значение из временной переменной
-                vario_fall_tmp = 0;                                                       // обнуляем временную переменную
-              }                                                                           // 
-          }                                                                               //
-        if (menuCount == 7)                                                               // ...если мы в режиме настройки значения порога высоты для писка на снижении
-          {                                                                               // 
-            TresABchange = true;                                                          // 
-            TrABcount++;                                                                  // 
-            if (TrABcount == 8) {TrABcount = 0;}                                          // если больше восьми, то обнуляем
-          }                                                                               //
-        if (menuCount == 8)                                                               // ...если мы в режиме настройки значения порога высоты для писка на подъёме
-          {                                                                               // 
-            TresABUpchange = true;                                                        // 
-            TrABUpcount++;                                                                // 
-            if (TrABUpcount == 9) {TrABUpcount = 0;}                                      // если больше девяти, то обнуляем
-          }                                                                               //
-        if (menuCount == 9)                                                               // ...если мы в подпункте выбора режима работы вариометра
-          {                                                                               // 
-            if (Thermal_ON == true)                                                       // ... и если включён режим Thermal
-              {                                                                           //
-                Thermal_ON = false;                                                       // переводим флаг для выключаения режима Thermal
-              }                                                                           //
-            else                                                                          // иначе
-              {                                                                           // 
-                Thermal_ON = true;                                                        // переводим флаг для включения режима Thermal
-              }                                                                           //
+        if (menuCount == 6)                                                               // ...если мы в режиме громкости пищалки
+          {                                                                               //
+            volCount++;                                                                   //
+            if (volCount == 4) {volCount = 0;}                                            // после MAX снова OFF
+            playTone(1800,60);                                                            // пробный сигнал на новой громкости
+            beepDelay(60);                                                                //
           }                                                                               //
         saveSettings();                                                            // сохраняем изменённую настройку сразу
       }                                                                                   //
@@ -1285,19 +1123,15 @@ if ((tempo-beep)>Beep_period)                                           //
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     gLEDtmp = true;                                                     // зеленый светодиод на подъеме
     Beep_period = 350-(vario*80);                                       //
-    tone(p,(2000+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
+    playTone((2000+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
   }                                                                     //
-  else if ((vario<vario_down)&&(vario>vario_fall))                      // звук на сливе
+  else if ((vario<vario_down))                      // звук на сливе
   {                                                                     //
     Alarm = false;                                                      // отключаем тревогу
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     rLEDtmp = true;                                                     // красный светодиод на сливе
     Beep_period=40;                                                     // update pitch every 40 ms (continuous tone)
-    tone(p,constrain(int(1000+(170*vario)),300,1200),150);   // continuous sink tone: lower pitch the faster you sink
-  }                                                                     //
-  else if (vario<=vario_fall)                                           // если значение vario меньше критического
-  {                                                                     //
-    Alarm_FALL();                                                       // запускаем подпрограмму ТРЕВОГИ (СИГНАЛИЗАЦИИ)
+    playTone(constrain(int(1000+(170*vario)),300,1200),150);   // continuous sink tone: lower pitch the faster you sink
   }                                                                     //
 }                                                                       //
 }                                                                       //
@@ -1311,14 +1145,10 @@ if ((tempo-beep)>Beep_period)                                           //
     Stmp = true;                                                        // "B" на подъёме
     gLEDtmp = true;                                                     // зеленый светодиод на подъеме
   }                                                                     //
-  else if ((vario<vario_down)&&(vario>vario_fall))                      // 
+  else if ((vario<vario_down))                      // 
   {                                                                     //
     Stmp = true;                                                        // "B" на сливе
     rLEDtmp = true;                                                     // красный светодиод на сливе
-  }                                                                     //
-  else if (vario<=vario_fall)                                           // если значение vario меньше критического
-  {                                                                     //
-    Alarm_FALL();                                                       // запускаем подпрограмму ТРЕВОГИ (СИГНАЛИЗАЦИИ)
   }                                                                     //
 }                                                                       //
 }                                                                       //
@@ -1333,36 +1163,6 @@ if ((LED_ON == true)&&(rLEDtmp == true))                                // ес�
 else if ((LED_ON == true)||(rLEDtmp == false))                          // иначе, если (режим с подсветкой вЫключен) ИЛИ (запрещен красный светодиод)
   {digitalWrite(rLED, LOW);}                                            // гасим красный светодиод
 
-///// ЗАЖИГАЕМ СВЕТОДИОДЫ ПРИ ПАДЕНИИ / LED WHILE FALLING /////                      
-if ((Alarm == true)&&(rLEDtmp == true)&&(gLEDtmp == true))              // При описанных условиях...
-  {digitalWrite(rLED, HIGH); digitalWrite(gLED, HIGH);}                 // Зажигаем оба светодиода во время работы ТРЕВОГИ
-
-///// ЗАПУСКАЕМ ПОДПРОГРАММУ ДЛИННОГО ПИСКА ПРИ ПРОХОДЕ ПОРОГОВОЙ ВЫСОТЫ НА СНИЖЕНИИ (РАБОТАЕТ ТОЛЬКО С ВЫСОТОЙ ПО УРОВНЮ СТАРТА) / START LONG BEEP ON DESCENT AT CERTAIN ALT (WORKS ONLY WITH ALT ABOVE TAKE OFF POINT) /////
-if ((vario < 0)&&(int(alt_beep) == altitude))                           // Если идём на снижении (vario<0) и высота равна пороговой высоте (alt_beep == altitude), то...
-  if (AltBeepFlag == true)                                              // и если флаг позволяет, то...
-    {                                                                   // 
-      Altitude_BEEP();                                                  // ...запускаем подпрограмму вывода звука (длинный единичный писк)
-      AltBeepFlag = false;                                              // переводим флаг в состояние запрета, что бы при движении на данной высоте не было постоянного писка
-    }                                                                   //
-
-///// ПРОВЕРКА ДЛЯ ВЫПОЛНЕНИЯ ЗАДЕРЖКИ ПОСЛЕ ОДНОКРАТНОГО ДЛИННОГО СИГНАЛА НА ПОРОГЕ ВЫСОТЫ (СПУСК) / CHECK FOR DELAY BEFORE NEXT BEEP ON DESCEND /////
-  if ((altitude<=(alt_beep-5))||(altitude>=(alt_beep+5)))               // Если высота изменилась на 5 метров по отношению к alt_beep (порог высоты для сигнала), то
-    {                                                                   // 
-      AltBeepFlag = true;                                               // снова разрешаем сигнал
-    }                                                                   // 
-
-///// ЗАПУСКАЕМ ПОДПРОГРАММУ ДЛИННОГО ПИСКА ПРИ ПРОХОДЕ ПОРОГОВОЙ ВЫСОТЫ НА ПОДЪЁМЕ (РАБОТАЕТ ТОЛЬКО С ВЫСОТОЙ ПО УРОВНЮ СТАРТА) / START LONG BEEP ON CLIMB AT CERTAIN ALT (WORKS ONLY WITH ALT ABOVE TAKE OFF POINT) /////
-if ((vario > 0)&&(int(alt_beep_up) == altitude))                        // Если идём на подъёме (vario>0) и высота равна пороговой высоте (alt_beep_up == altitude), то...
-  if (AltUpBeepFlag == true)                                            // и если флаг позволяет, то...
-    {                                                                   // 
-      Altitude_BEEP_Up();                                               // ...запускаем подпрограмму вывода звука (длинный единичный писк)
-      AltUpBeepFlag = false;                                            // переводим флаг в состояние запрета, что бы при движении на данной высоте не было постоянного писка
-    }                                                                   //
-///// ПРОВЕРКА ДЛЯ ВЫПОЛНЕНИЯ ЗАДЕРЖКИ ПОСЛЕ ОДНОКРАТНОГО ДЛИННОГО СИГНАЛА НА ПОРОГЕ ВЫСОТЫ (ПОДЪЁМ) / CHECK FOR DELAY BEFORE NEXT BEEP ON CLIMB /////
-  if ((altitude<=(alt_beep_up-5))||(altitude>=(alt_beep_up+5)))         // Если высота изменилась на 5 метров по отношению к alt_beep_up (порог высоты для сигнала), то
-    {                                                                   // 
-      AltUpBeepFlag = true;                                             // снова разрешаем сигнал
-    }                                                                   // 
 
 ///// ЗАПУСК ПОДПРОГРАММ, В ЗАВИСИМОСТИ ОТ ВКЛ/ВЫКЛ МЕНЮ / START MAIN WINDOW OR MENU /////
 if (MainMenu == false)                                                  // Если режим МЕНЮ ВЫКЛЮЧЕН, то...
