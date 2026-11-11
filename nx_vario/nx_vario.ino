@@ -46,6 +46,8 @@ byte AvgCount = 1;                  // выбранное время усред�
 const byte avgSec[5] = {5, 10, 15, 20, 30};   // МОЖНО МЕНЯТЬ!!! варианты времени усреднения, сек
 float maxVario = 0;                 // переменная максимального значения вариометра                       
 float minVario = 0;                 // переменная минимального значения вариометра                        
+float maxVarioAvg = 0;              // максимальное усреднённое значение вариометра
+float minVarioAvg = 0;              // минимальное усреднённое значение вариометра
 float presSea = 1013.25;            // давление на уровне моря в hPa (DEFAULT=1013.25)   - МОЖНО МЕНЯТЬ!!!
 float presTMP = 0;                  // переменная для работы процедуры ручного ввода давления
 float tempo = millis();             // описание переменной tempo типа float и присвоение ей значения функции millis() - отсчитывает время от начала работы программы в миллисекундах
@@ -467,6 +469,15 @@ if (windowCount == 2)                                                   // ес�
     lcd.print("Max Var:   "); lcd.print(maxVario);                      // печатаем максимальное значение вариометра
     lcd.setCursor(0,1);                                                 //
     lcd.print("Min Var:   "); lcd.print(minVario);                      // печатаем минимальное значение вариометра
+  }                                                                     //
+
+///// ЭКРАННОЕ ОКНО 4 / MAIN WINDOW 4 (Max/Min averaged vario) /////
+if (windowCount == 3)                                                   // если выбрано четвёртое окно...
+  {                                                                     //
+    lcd.setCursor(0,0);                                                 //
+    lcd.print("Max Avg:   "); lcd.print(maxVarioAvg);                   // выводим максимальное усреднённое значение
+    lcd.setCursor(0,1);                                                 //
+    lcd.print("Min Avg:   "); lcd.print(minVarioAvg);                   // выводим минимальное усреднённое значение
   }                                                                     //
 }                                                                       //
 }                                                                       // конец вывода на экран
@@ -967,7 +978,7 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
     if (MainMenu == false)                                                                // ... если мы не в МЕНЮ, то...
       {                                                                                   // 
         windowCount++;                                                                    // ... переключаем главные экраны (в данной строке увеличиваем счётчик экрана)
-        if (windowCount == 3)                                                             // если счётчик дошёл до трёх, то...
+        if (windowCount == 4)                                                             // если счётчик дошёл до трёх, то...
           {windowCount = 0;}                                                              // ... обнуляем
         lcd.clear();                                                                      // очищаем экран при каждом переключении
       }                                                                                   // 
@@ -1061,6 +1072,12 @@ if (Buttom3.click())                                                            
             maxVario = 0;                                                                 // сбрасываем на ноль максимальное значение вариометра
             minVario = 0;                                                                 // сбрасываем на ноль минимальное значение вариометра
           }                                                                               //
+        if (windowCount == 3)                                                             // если мы на четвёртом окне...
+          {                                                                               // ...обнуляем усреднённые макс/мин
+            lcd.clear();                                                                  //
+            maxVarioAvg = 0;                                                              //
+            minVarioAvg = 0;                                                              //
+          }                                                                               //
       }                                                                                   //
     else if (askSave == false)                                                                                  // ... если мы, все-таки, в МЕНЮ, то...
       {                                                                                   // при длительном нажатии КНОПКИ 3 в режиме МЕНЮ происходит сброс параметров к дефолтным
@@ -1103,6 +1120,8 @@ if (millis() - avgTime >= 1000)                                         // ра�
 ///// ПРИСВОЕНИЕ ЗНАЧЕНИЙ МАКС/МИН ВАРИОМЕТРА / ASSIGNING VALUES FOR MAX/MIN VARIO /////
 if (maxVario<vario) {maxVario = vario;}                                 // присвоение максимального значения вариометра
 if (minVario>vario) {minVario = vario;}                                 // присвоение минимального значения вариометра
+if (maxVarioAvg < varioAvg) {maxVarioAvg = varioAvg;}               // запоминаем максимум усреднённого значения
+if (minVarioAvg > varioAvg) {minVarioAvg = varioAvg;}               // запоминаем минимум усреднённого значения
 
 ///// ПРИСВОЕНИЕ ЗНАЧЕНИЙ МАКСИМАЛЬНОЙ ВЫСОТЫ / ASSIGNING VALUES FOR MAX ALTITUDES /////
 if (AltDifTmpFlag == true)                                              // 
