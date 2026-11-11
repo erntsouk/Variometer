@@ -262,6 +262,31 @@ void saveSettings()
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
 }
 
+///// ВЫХОД ИЗ МЕНЮ С ОТВЕТОМ НА ВОПРОС О СОХРАНЕНИИ / LEAVE MENU /////
+void exitMenu()
+{
+  askSave = false;                    // убираем экран вопроса
+  MainMenu = false;                   // закрываем меню
+  menuCount = 0;                      // обнуляем счётчик режимов меню
+  symCount = 0;                       // обнуляем счётчик символов
+  if (presChange == true)             // если выходим в режиме редактирования давления...
+    {
+      presChange = false;             // ... выключаем режим
+      presTMP = presSea;              // ... возвращаем прежнее значение
+      presSTR = presToStr(presTMP);   //
+    }
+  if (saveChoice == true) {saveSettings();}   // YES - сохраняем настройки в память
+  else                                        // NO - возвращаем настройки из памяти
+    {
+      loadSettings();                 //
+      applySettings();                //
+      presTMP = presSea;              //
+      presSTR = presToStr(presTMP);   //
+    }
+  beep_ON = true;                     // включаем звуки вариометра
+  lcd.clear();                        // очищаем экран
+}
+
 String presToStr(float v)           // давление в виде строки "1013.2" (4 цифры + 1 после точки)
 {
   char buf[10];
@@ -857,38 +882,19 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
         beep_ON = false;                                                                  // выключаем флаг beep_ON (то есть, в МЕНЮ не работает звук вариометра)
         lcd.clear();                                                                      // очистка экрана при нажатии кнопки
       }                                                                                   //
-    else                                                                                  // ... если мы, всё-таки, в МЕНЮ, то по короткому нажатию на клавишу 1...
-      {                                                                                   //
-        if (askSave == false)                                                         // первый раз - спрашиваем, сохранять ли настройки
+    else                                                                                  // ... если мы уже в меню
+      {
+        if (askSave == true)                                                              // если показан вопрос о сохранении...
           {
-            askSave = true;                                                           // включаем экран вопроса
-            saveChoice = true;                                                        // по умолчанию - YES
-            lcd.clear();                                                              //
+            exitMenu();                                                                   // ... выполняем ответ и выходим из меню
           }
-        else                                                                          // второй раз - выполняем ответ и выходим из меню
+        else if (presChange == false)                                                     // иначе листаем страницы меню
           {
-            askSave = false;                                                          // убираем экран вопроса
-            MainMenu = false;                                                         // закрываем меню
-            menuCount = 0;                                                            // обнуляем счётчик режимов меню
-            symCount = 0;                                                             // обнуляем счётчик символов
-            if (presChange == true)                                                   // если выходим в режиме редактирования давления...
-              {
-                presChange = false;                                                   // ... выключаем режим
-                presTMP = presSea;                                                    // ... возвращаем прежнее значение
-                presSTR = presToStr(presTMP);                                         //
-              }
-            if (saveChoice == true) {saveSettings();}                                 // YES - сохраняем настройки в память
-            else                                                                      // NO - возвращаем настройки из памяти
-              {
-                loadSettings();                                                       //
-                applySettings();                                                      //
-                presTMP = presSea;                                                    //
-                presSTR = presToStr(presTMP);                                         //
-              }
-            beep_ON = true;                                                           // включаем звуки вариометра
-            lcd.clear();                                                              // очищаем экран
+            menuCount += 1;                                                               //
+            if (menuCount == 10) {menuCount = 0;}                                         // после последней страницы - снова первая
+            lcd.clear();                                                                  //
           }
-      }                                                                                   //
+      }
   }                                                                                       //
 
 ///// ДЛИННОЕ НАЖАТИЕ КНОПКИ 1 / BUTTON 1 LONG PRESS /////
@@ -901,10 +907,19 @@ if (Buttom1.click())                                                            
         lcd.print("   ");                                                                 // затираем старое значение времени
         timeZero = millis();                                                              // присвоение значения переменной для обнуления времени      
       }                                                                                   // 
-    else                                                                                  // ... если мы, всё-таки, в МЕНЮ, то по длинному нажатию на клавишу 1...
-      {                                                                                   //
-
-      }                                                                                   //
+    else                                                                                  // ... если мы в меню
+      {
+        if (askSave == false)                                                             // спрашиваем, сохранять ли настройки
+          {
+            askSave = true;                                                               // включаем экран вопроса
+            saveChoice = true;                                                            // по умолчанию - YES
+            lcd.clear();                                                                  //
+          }
+        else                                                                              // если вопрос уже показан - выполняем ответ
+          {
+            exitMenu();                                                                   //
+          }
+      }
     longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
   }                                                                                       //
 if (b1.fell() == 1) {longpress = false;}                                                  // убираем факт длительного нажатия при отпускании книпки
