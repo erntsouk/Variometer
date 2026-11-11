@@ -792,10 +792,10 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           {
             exitMenu();                                                                   // ... выполняем ответ и выходим из меню
           }
-        else if ((presChange == false) && (altChange == false))                                                     // иначе листаем страницы меню
+        else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
           {
-            menuCount += 1;                                                               //
-            if (menuCount == 7) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 0) {menuCount = 7;}                                          // с первой страницы переходим на последнюю
+            menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
       }
