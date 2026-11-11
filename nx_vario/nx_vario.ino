@@ -23,6 +23,10 @@ VarioLCD lcd(16, 2);
 #define p 3                         // пин пищалки
 #define gLED 7                      // пин ЗЕЛЕНОГО диода
 #define rLED 8                      // пин КРАСНОГО диода
+#define BAT_PIN A0                  // пин измерения напряжения батареи (через делитель)
+#define BAT_DIV 0.3197              // МОЖНО МЕНЯТЬ!!! коэффициент делителя R2/(R1+R2), для 100к и 47к
+#define BAT_FULL 9.0                // МОЖНО МЕНЯТЬ!!! напряжение полной батареи, В
+#define BAT_EMPTY 6.5               // МОЖНО МЕНЯТЬ!!! напряжение разряженной батареи, В
 
 Bounce b1 = Bounce();               // создаём объект Bounce 1 (для удаления дребезга кнопок)
 Bounce b2 = Bounce();               // создаём объект Bounce 2 (для удаления дребезга кнопок)
@@ -579,6 +583,7 @@ void Menu()                                                                     
     else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
     else if (menuCount == 6) {VarioMode();}                                       // 7 экран меню - режим работы вариометра
     else if (menuCount == 7) {AvgTime();}                                         // 8 экран меню - время усреднения показаний
+    else if (menuCount == 8) {BatteryInfo();}                                     // 9 экран меню - напряжение батареи
 }                                                                                 //
 
 ///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -726,6 +731,31 @@ void LED_light()                                                                
 }                                                                                 //
 
 ///// ПОДПРОГРАММА ВЫБОРА РЕЖИМА ВАРИОМЕТРА / VARIO MODE SET /////
+///// НАПРЯЖЕНИЕ БАТАРЕИ / BATTERY VOLTAGE /////
+float batteryVolts()                                                              // измеряем напряжение батареи
+{                                                                                 //
+  unsigned int sum = 0;                                                           //
+  for (byte i = 0; i < 8; i++) {sum += analogRead(BAT_PIN);}                       // усредняем 8 измерений
+  return (sum / 8.0) * (5.0 / 1023.0) / BAT_DIV;                                   // пересчитываем через делитель
+}                                                                                 //
+
+void BatteryInfo()                                                                //
+{                                                                                 //
+  float v = batteryVolts();                                                       //
+  int pct = (v - BAT_EMPTY) * 100.0 / (BAT_FULL - BAT_EMPTY);                      // переводим в проценты
+  if (pct < 0) {pct = 0;}                                                         //
+  if (pct > 100) {pct = 100;}                                                     //
+  lcd.setCursor(0,1);                                                             //
+  lcd.print("Bat ");                                                              // рисуем строку "Bat"
+  lcd.print(v,1);                                                                 // выводим напряжение
+  lcd.print("V   ");                                                              //
+  lcd.setCursor(12,1);                                                            //
+  if (pct < 100) {lcd.print(" ");}                                                // выравниваем по правому краю
+  if (pct < 10) {lcd.print(" ");}                                                 //
+  lcd.print(pct);                                                                 // выводим проценты
+  lcd.print("%");                                                                 //
+}                                                                                 //
+
 ///// ВРЕМЯ УСРЕДНЕНИЯ ПОКАЗАНИЙ / AVERAGING TIME /////
 void AvgTime()                                                                    //
 {                                                                                 //
@@ -825,7 +855,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           }
         else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
           {
-            if (menuCount == 0) {menuCount = 8;}                                          // с первой страницы переходим на последнюю
+            if (menuCount == 0) {menuCount = 9;}                                          // с первой страницы переходим на последнюю
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
@@ -897,7 +927,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // иначе листаем страницы меню
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 8) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 9) {menuCount = 0;}                                         // после последней страницы - снова первая
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
