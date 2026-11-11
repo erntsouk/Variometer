@@ -7,34 +7,11 @@
 #include <SBB_CLICK.h>              // подключение библиотеки удержания кнопки
 #include <math.h>                   // подключение библиотеки для работы с математическими функциями (в данном случае с логарифмом для вычисления высоты на уровне моря)
 BMP180 sensor;                      // 
-#define BL_FULL_INIT 1              // если подсветка не реагирует на меню, поставьте 1 (полная инициализация микросхемы подсветки)
 class VarioLCD : public Waveshare_LCD1602, public Print {
 public:
   VarioLCD(uint8_t cols, uint8_t rows) : Waveshare_LCD1602(cols, rows) {}
   size_t write(uint8_t value) override { write_char(value); return 1; }
   void createChar(uint8_t location, uint8_t charmap[]) { customSymbol(location, charmap); }
-  void backlight() {}  // Backlight is built into this Waveshare module
-  void noBacklight() {}
-  // Backlight chip SN3193 at I2C address 0x6B (the Waveshare library here has no backlight functions)
-  void blWrite(uint8_t reg, uint8_t val) {
-    Wire.beginTransmission(0x6B);
-    Wire.write(reg);
-    Wire.write(val);
-    Wire.endTransmission();
-  }
-  void initBacklightChip() {        // only used if BL_FULL_INIT is 1
-    blWrite(0x2F, 0x00);            // reset
-    blWrite(0x00, 0x20);            // normal operation
-    blWrite(0x02, 0x00);            // normal (not breathing) mode
-    blWrite(0x1C, 0x07);            // enable outputs 1-3
-  }
-  void setBacklightLevel(uint8_t percent) {   // percent: 0-100
-    uint8_t pwm = (uint16_t)percent * 255 / 100;
-    blWrite(0x04, pwm);             // PWM output 1
-    blWrite(0x05, pwm);             // PWM output 2
-    blWrite(0x06, pwm);             // PWM output 3
-    blWrite(0x07, 0x00);            // latch the new values
-  }
 };
 
 VarioLCD lcd(16, 2);
@@ -123,9 +100,6 @@ boolean AfterAlarmFlag = false;     // флаг для затирания ост
 boolean AlarmTestFlag = false;      // флаг ВКЛ/ВЫКЛ тестового режима СИГНАЛИЗАЦИИ при ПАДЕНИИ
 boolean AltBeepFlag = true;         // флаг для задержки после срабатывания сигнала на снижении при проходе порога высоты
 boolean AltUpBeepFlag = true;       // флаг для задержки после срабатывания сигнала на подъёме при проходе порога высоты
-boolean BackLightFlag = true;       // флаг для проверки ВКЛ/ВЫКЛ подсветки экрана
-byte BackLightLevel = 2;             // выбранный уровень яркости подсветки (индекс в массиве BackLightPercent)
-const byte BackLightPercent[3] = {30, 60, 100};  // МОЖНО МЕНЯТЬ!!! Три уровня яркости подсветки в процентах (0-100)
 boolean AltDifTmpFlag = false;      // флаг проверки был ли сброс высоты, или нет (единый для всех высот, но в коде выбирается проверка по значению cnt)
 boolean Thermal_ON = false;         // флаг проверки включения режима Thermal для вариометра
 
@@ -273,10 +247,6 @@ void setup()
   b3.interval(5);                   // устанавливаем время задержки в 5 мс
   
   lcd.init();                       // инициализация lcd 
-#if BL_FULL_INIT
-  lcd.initBacklightChip();          // инициализация микросхемы подсветки
-#endif
-  lcd.setBacklightLevel(BackLightPercent[BackLightLevel]);  // яркость подсветки при старте
   lcd.setCursor(0,0);               //
   lcd.print("nx-Vario....v1.2");    // первая строка экрана приветствия
   lcd.setCursor(0,1);               //
@@ -543,7 +513,6 @@ void Menu()                                                                     
     else if (menuCount == 7) {TresholdAB();}                                      // если выбран 8 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при снижении
     else if (menuCount == 8) {TresholdABUp();}                                    // если выбран 9 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при подъёме
     else if (menuCount == 9) {VarioMode();}                                       // если выбран 10 экран меню, запускаем подпрограмму выбора режима работы вариометра (Standard/Thermal)
-    else if (menuCount == 10) {Back_Light();}                                     // если выбран 11 экран меню, запускаем подпрограмму настройки пороговой высоты для срабатывания длинного писка при снижении
 }                                                                                 //
 
 ///// ПРОЦЕДУРА ИЗМЕНЕНИЯ ЗНАЧЕНИЯ ДАВЛЕНИЯ ПО МОРЮ / SEA PRESSURE VALUE CHANGE PROCEDURE /////
@@ -794,16 +763,6 @@ void VarioMode()                                                                
       }                                                                           // 
 }                                                                                 //
 
-///// ВКЛ/ВЫКЛ ПОДСВЕТКИ ЭКРАНА / LCD BACKLIGHT ON/OFF /////
-void Back_Light()                                                                 //
-{                                                                                 //
-  lcd.setCursor(0,1);                                                             //
-  lcd.print("Backlight  ");                                                       // рисуем строку "Backlight"
-  lcd.setCursor(13,1);                                                            //
-    lcd.print(BackLightPercent[BackLightLevel]);                                  // рисуем яркость подсветки в процентах
-    if (BackLightPercent[BackLightLevel] < 100) {lcd.print(" ");}                 // затираем лишний символ
-}                                                                                 //
-
 ///// ВКЛ/ВЫКЛ ЗВУКА КЛАВИШ / BUTTON BEEP ON/OFF /////
 void ButtonBeep()                                                                 //
 {                                                                                 //
@@ -894,7 +853,7 @@ if ((b2.update() == 1) && (b2.read() == HIGH) && (b2.rose() == 1) && (longpress 
         if (presChange == false)                                                          // если ВЫКЛЮЧЕН режим ввода символов для давления по морю...
           {                                                                               //
             menuCount += 1;                                                               // ...выбор окна меню
-            if (menuCount == 11) {menuCount = 0;}                                         // если счётчик больше десяти, то присваиваем 0, т.е. первый экран меню
+            if (menuCount == 10) {menuCount = 0;}                                         // если счётчик больше десяти, то присваиваем 0, т.е. первый экран меню
           }                                                                               //
         else                                                                              // если ВКЛЮЧЕН режим редактирования давления, то...
           {                                                                               //
@@ -1042,12 +1001,6 @@ if ((b3.update() == 1) && (b3.read() == HIGH) && (b3.rose() == 1) && (longpress 
               {                                                                           // 
                 Thermal_ON = true;                                                        // переводим флаг для включения режима Thermal
               }                                                                           //
-          }                                                                               //
-        if (menuCount == 10)                                                              // ...если мы в режиме ВКЛ/ВЫКЛ подсветки экрана
-          {                                                                               // 
-            BackLightLevel++;                                                             // следующий уровень яркости
-            if (BackLightLevel == 3) {BackLightLevel = 0;}                                // после третьего уровня возвращаемся к первому
-            lcd.setBacklightLevel(BackLightPercent[BackLightLevel]);                      // применяем яркость
           }                                                                               //
       }                                                                                   //
   }                                                                                       //
