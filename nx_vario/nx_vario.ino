@@ -37,6 +37,13 @@ float vario_up = 0.1;               // Установка порогового �
 float beep;                         // переменная для вывода звука при работе вариометра                  
 float Beep_period;                  // переменная для вывода звука при работе вариометра                  
 float vario = 0;                    // переменная вариометра                                              
+float varioAvg = 0;                 // усреднённое значение вариометра для экрана
+float avgAlt[31];                   // снимки высоты раз в секунду (хватает на 30 секунд)
+byte avgIdx = 0;                    // позиция в кольцевом буфере
+byte avgFill = 0;                   // сколько снимков уже накоплено
+unsigned long avgTime = 0;          // время последнего снимка
+byte AvgCount = 1;                  // выбранное время усреднения (индекс в avgSec)
+const byte avgSec[5] = {5, 10, 15, 20, 30};   // МОЖНО МЕНЯТЬ!!! варианты времени усреднения, сек
 float maxVario = 0;                 // переменная максимального значения вариометра                       
 float minVario = 0;                 // переменная минимального значения вариометра                        
 float presSea = 1013.25;            // давление на уровне моря в hPa (DEFAULT=1013.25)   - МОЖНО МЕНЯТЬ!!!
@@ -218,11 +225,11 @@ byte arrow_e_down[8]                // кодируем символ пусто�
 ///// СОХРАНЕНИЕ НАСТРОЕК В ПАМЯТЬ / SAVED SETTINGS (EEPROM) /////
 struct SavedSettings {
   uint16_t magic;
-  byte TrUP, TrDN, vol;
+  byte TrUP, TrDN, vol, avg;
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55B       // если изменить это число, сохранённые настройки сбросятся
+#define SETTINGS_MAGIC 0xA55C       // если изменить это число, сохранённые настройки сбросятся
 
 void applySettings()
 {
@@ -234,9 +241,9 @@ void loadSettings()
 {
   SavedSettings s;
   EEPROM.get(0, s);
-  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.presSea > 300.0 && s.presSea < 1200.0)
+  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.presSea > 300.0 && s.presSea < 1200.0)
     {
-      TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol;
+      TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
       LED_ON = s.led; button_beep_ON = s.btnBeep; Thermal_ON = s.thermal;
       presSea = s.presSea;
     }
@@ -246,7 +253,7 @@ void saveSettings()
 {
   SavedSettings s;
   s.magic = SETTINGS_MAGIC;
-  s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount;
+  s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount; s.avg = AvgCount;
   s.led = LED_ON; s.btnBeep = button_beep_ON; s.thermal = Thermal_ON;
   s.presSea = presSea;
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
@@ -395,7 +402,7 @@ if (windowCount == 0)                                                   // ес�
     }                                                                   // 
 
 ///// ВЫВОД ЗНАЧЕНИЙ ВАРИОМЕТРА / VARIO OUTPUT /////
-  dtostrf(vario,4, 1, outvario);                                        // перевод значения переменной vario (float) в массив символов для возможности округления до десятых
+  dtostrf(varioAvg,4, 1, outvario);                                        // перевод значения переменной vario (float) в массив символов для возможности округления до десятых
   lcd.setCursor(1,0);                                                   //
   lcd.print(outvario);                                                  // вывод значений вариометра с округлением до десятых
 
@@ -560,6 +567,7 @@ void Menu()                                                                     
     else if (menuCount == 4) {ButtonBeep();}                                      // 5 экран меню - ВКЛ/ВЫКЛ звука клавиш
     else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
     else if (menuCount == 6) {VarioMode();}                                       // 7 экран меню - режим работы вариометра
+    else if (menuCount == 7) {AvgTime();}                                         // 8 экран меню - время усреднения показаний
 }                                                                                 //
 
 ///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -707,6 +715,18 @@ void LED_light()                                                                
 }                                                                                 //
 
 ///// ПОДПРОГРАММА ВЫБОРА РЕЖИМА ВАРИОМЕТРА / VARIO MODE SET /////
+///// ВРЕМЯ УСРЕДНЕНИЯ ПОКАЗАНИЙ / AVERAGING TIME /////
+void AvgTime()                                                                    //
+{                                                                                 //
+  lcd.setCursor(0,1);                                                             //
+  lcd.print("Average    ");                                                       // рисуем строку "Average"
+  lcd.setCursor(12,1);                                                            //
+  if (avgSec[AvgCount] < 10) {lcd.print("  ");}                                   //
+  else {lcd.print(" ");}                                                          //
+  lcd.print(avgSec[AvgCount]);                                                    // выводим время усреднения
+  lcd.print("s");                                                                 //
+}                                                                                 //
+
 ///// ГРОМКОСТЬ ПИЩАЛКИ / BUZZER VOLUME /////
 void VolumeSet()                                                                  //
 {                                                                                 //
@@ -794,7 +814,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           }
         else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
           {
-            if (menuCount == 0) {menuCount = 7;}                                          // с первой страницы переходим на последнюю
+            if (menuCount == 0) {menuCount = 8;}                                          // с первой страницы переходим на последнюю
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
@@ -866,7 +886,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // иначе листаем страницы меню
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 7) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 8) {menuCount = 0;}                                         // после последней страницы - снова первая
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
@@ -1007,6 +1027,12 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             if (Thermal_ON == true) {Thermal_ON = false;}                                 //
             else {Thermal_ON = true;}                                                     //
           }                                                                               //
+        if (menuCount == 7)                                                               // ...если мы в режиме времени усреднения
+          {                                                                               //
+            AvgCount++;                                                                   //
+            if (AvgCount == 5) {AvgCount = 0;}                                            // после последнего значения - снова первое
+            avgFill = 0;                                                                  // начинаем накопление заново
+          }                                                                               //
         saveSettings();                                                            // сохраняем изменённую настройку сразу
       }                                                                                   //
   }                                                                                       //
@@ -1057,6 +1083,22 @@ Buttom3.release();                                                              
 altitude = sensor.alti-altTmp;                                                            // ВЫСОТА СТАРТА - присвоение переменной altitude (высота старта или дополнительная высота) значения высоты с датчика минус высота в точке обнуления
 altitudeAdd = sensor.alti-altTmpAdd;                                                      // ДОПОЛНИТЕЛЬНАЯ ВЫСОТА - присвоение переменной altitudeAdd (высота старта или дополнительная высота) значения высоты с датчика минус высота в точке обнуления
 altitudeSEA = -29.21*float(log((sensor.pres*MMHG_TO_HPA)/presSea))*(sensor.temp+273.15);                // ВЫСОТА ПО УРОВНЮ МОРЯ - вычисление по приведённому давлению, давлению в данный момент и значению температуры
+
+///// УСРЕДНЕНИЕ ПОКАЗАНИЙ ВАРИОМЕТРА ДЛЯ ЭКРАНА / AVERAGED VARIO FOR THE SCREEN /////
+if (millis() - avgTime >= 1000)                                         // раз в секунду запоминаем высоту
+  {
+    avgTime = millis();                                                 //
+    avgIdx++;                                                           //
+    if (avgIdx == 31) {avgIdx = 0;}                                     //
+    avgAlt[avgIdx] = sensor.alti;                                       //
+    if (avgFill < 31) {avgFill++;}                                      //
+    byte n = avgSec[AvgCount];                                          // выбранное время усреднения
+    if (avgFill > n)                                                    // когда снимков накопилось достаточно...
+      {
+        byte old = (avgIdx + 31 - n) % 31;                              // снимок n секунд назад
+        varioAvg = (avgAlt[avgIdx] - avgAlt[old]) / float(n);           // средняя скорость за это время
+      }
+  }
 
 ///// ПРИСВОЕНИЕ ЗНАЧЕНИЙ МАКС/МИН ВАРИОМЕТРА / ASSIGNING VALUES FOR MAX/MIN VARIO /////
 if (maxVario<vario) {maxVario = vario;}                                 // присвоение максимального значения вариометра
