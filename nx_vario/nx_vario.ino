@@ -323,6 +323,7 @@ void setup()
   presTMP = presSea;                // временная переменная давления (для расчётов) = дефолтное давление (presSea используется в формуле расчёта высоты)
   presSTR = presToStr(presTMP);        // преобразование давления из float в String
   applySettings();                  // применяем пороги из сохранённых настроек (vario_up, vario_down)
+  backupSettings();                 // первый снимок настроек (на случай ответа NO до первого входа в меню)
   
   pinMode(p, OUTPUT);               // установка пина 3 в output (это пин пищалки)
   pinMode(gLED, OUTPUT);            // установка пина 7 в output (это пин зеленого светодиода)
