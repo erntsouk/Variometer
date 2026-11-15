@@ -843,7 +843,8 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
       {
         if (askSave == true)                                                              // если показан вопрос о сохранении...
           {
-            exitMenu();                                                                   // ... выполняем ответ и выходим из меню
+            if (saveChoice == true) {saveChoice = false;}                                 // ... переключаем ответ YES/NO
+            else {saveChoice = true;}                                                     //
           }
         else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
           {
@@ -1004,8 +1005,7 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
       }                                                                                   // 
     else if (askSave == true)                                                         // если показан вопрос о сохранении...
       {
-        if (saveChoice == true) {saveChoice = false;}                                 // переключаем ответ YES/NO
-        else {saveChoice = true;}                                                     //
+        exitMenu();                                                               // ... выполняем ответ и выходим из меню
       }
     else
       {                                                                                   // 
