@@ -75,11 +75,11 @@ int maxAltSea = 0;                  // максимальная высота н�
 int maxAltStt = 0;                  // максимальная высота над стартом
 int maxAltAdd = 0;                  // максимальная высота дополнительная
 
-char s0 = '7';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s1 = '6';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s2 = '0';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s3 = '0';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s4 = '0';                      // символ в значении давления по морю (используется для работы при вводе значения)
+char s0 = '1';                      // символ в значении давления по морю (используется для работы при вводе значения)
+char s1 = '0';                      // символ в значении давления по морю (используется для работы при вводе значения)
+char s2 = '1';                      // символ в значении давления по морю (используется для работы при вводе значения)
+char s3 = '3';                      // символ в значении давления по морю (используется для работы при вводе значения)
+char s4 = '2';                      // символ в значении давления по морю (используется для работы при вводе значения)
 
 String presSTR;                     // строка используется в процедуре ручного ввода давления
 char t0 = '0';                      // символы в значении высоты (для меню установки высоты)
@@ -120,6 +120,17 @@ static char outTrDN[4];             // массив символов для от
 static char outtime[4];             // массив символов для отображения времени
 
 unsigned long timeZero = 0;         // переменная для обнуления таймера (ИМЕННО unsigned long!!!)
+boolean AutoStart = true;           // автоматическое определение старта и посадки
+boolean inFlight = false;           // идёт ли полёт
+boolean askLanded = false;          // показан ли вопрос "LANDED?"
+boolean landChoice = true;          // выбранный ответ на этот вопрос
+boolean landDismiss = false;        // после ответа NO не спрашиваем снова до движения
+boolean groundInit = false;         // получена ли первая высота земли
+float groundAlt = 0;                // опорная высота земли
+float landAlt = 0;                  // высота в начале покоя
+unsigned long varioTime = 0;        // когда начался устойчивый подъём/снижение
+unsigned long quietTime = 0;        // когда начался покой
+unsigned long flightMs = 0;         // длительность полёта, мс
 
 byte TrUPcount = 0;                 // счётчик для выбора значения порога срабатывания на подъёме из массива возможных вариантов    - МОЖНО МЕНЯТЬ только в паре с vario_up, номер ячейки брать из массива treshUP!!!
 byte TrDNcount = 3;                 // счётчик для выбора значения порога срабатывания на сливе из массива возможных вариантов      - МОЖНО МЕНЯТЬ только в паре с vario_down, номер ячейки брать из массива treshDN!!!
@@ -228,10 +239,11 @@ byte arrow_e_down[8]                // кодируем символ пусто�
 struct SavedSettings {
   uint16_t magic;
   byte TrUP, TrDN, vol, avg;
+  boolean autoStart;
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55C       // если изменить это число, сохранённые настройки сбросятся
+#define SETTINGS_MAGIC 0xA55D       // если изменить это число, сохранённые настройки сбросятся
 
 void applySettings()
 {
@@ -246,7 +258,7 @@ void loadSettings()
   if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.presSea > 300.0 && s.presSea < 1200.0)
     {
       TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
-      LED_ON = s.led; button_beep_ON = s.btnBeep; Thermal_ON = s.thermal;
+      LED_ON = s.led; button_beep_ON = s.btnBeep; Thermal_ON = s.thermal; AutoStart = s.autoStart;
       presSea = s.presSea;
     }
 }
@@ -256,30 +268,93 @@ void saveSettings()
   SavedSettings s;
   s.magic = SETTINGS_MAGIC;
   s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount; s.avg = AvgCount;
-  s.led = LED_ON; s.btnBeep = button_beep_ON; s.thermal = Thermal_ON;
+  s.led = LED_ON; s.btnBeep = button_beep_ON; s.thermal = Thermal_ON; s.autoStart = AutoStart;
   s.presSea = presSea;
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
 }
 
 ///// СНИМОК НАСТРОЕК ПРИ ВХОДЕ В МЕНЮ / SETTINGS BACKUP ON MENU ENTRY /////
 byte bkTrUP, bkTrDN, bkVol, bkAvg;  // копии настроек на момент входа в меню
-boolean bkLED, bkBtn, bkTherm;      //
+boolean bkLED, bkBtn, bkTherm, bkAuto;   //
 float bkPres;                       //
 
 void backupSettings()               // запоминаем настройки при входе в меню
 {
   bkTrUP = TrUPcount; bkTrDN = TrDNcount; bkVol = volCount; bkAvg = AvgCount;
-  bkLED = LED_ON; bkBtn = button_beep_ON; bkTherm = Thermal_ON;
+  bkLED = LED_ON; bkBtn = button_beep_ON; bkTherm = Thermal_ON; bkAuto = AutoStart;
   bkPres = presSea;
 }
 
 void restoreSettings()              // возвращаем настройки, какими они были при входе в меню
 {
   TrUPcount = bkTrUP; TrDNcount = bkTrDN; volCount = bkVol; AvgCount = bkAvg;
-  LED_ON = bkLED; button_beep_ON = bkBtn; Thermal_ON = bkTherm;
+  LED_ON = bkLED; button_beep_ON = bkBtn; Thermal_ON = bkTherm; AutoStart = bkAuto;
   presSea = bkPres;
   applySettings();
   avgFill = 0;                      // усреднение начинаем заново
+}
+
+///// АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ СТАРТА И ПОСАДКИ / AUTO TAKE-OFF AND LANDING /////
+#define TO_ALT 10.0                 // МОЖНО МЕНЯТЬ!!! уход по высоте для определения старта, м
+#define TO_VARIO 0.5                // МОЖНО МЕНЯТЬ!!! порог вариометра для определения старта, м/с
+#define TO_SEC 3                    // МОЖНО МЕНЯТЬ!!! сколько секунд держится этот порог
+#define LAND_VARIO 0.2              // МОЖНО МЕНЯТЬ!!! порог вариометра для определения покоя, м/с
+#define LAND_ALT 3.0                // МОЖНО МЕНЯТЬ!!! допустимый уход по высоте в покое, м
+#define LAND_SEC 60                 // МОЖНО МЕНЯТЬ!!! сколько секунд покоя до вопроса о посадке
+
+void takeOff()                      // старт обнаружен
+{
+  inFlight = true;                  //
+  altTmp = int(groundAlt);          // высоту над стартом считаем от места взлёта
+  timeZero = millis();              // запускаем таймер полёта
+  flightMs = 0;                     //
+  maxVario = 0; minVario = 0;       // обнуляем макс/мин вариометра
+  maxVarioAvg = 0; minVarioAvg = 0; //
+  maxAltSea = 0; maxAltStt = 0; maxAltAdd = 0;   // и максимальные высоты
+  quietTime = 0;                    //
+  landAlt = sensor.alti;            //
+  triple_beep();                    // сигнал о старте
+}
+
+void landed()                       // посадка подтверждена
+{
+  inFlight = false;                 // таймер полёта останавливается на своём значении
+  askLanded = false;                //
+  groundAlt = sensor.alti;          // снова следим за высотой земли
+  varioTime = 0;                    //
+  quietTime = 0;                    //
+  landDismiss = false;              //
+  SSL_beep();                       // сигнал о посадке
+  lcd.clear();                      //
+}
+
+void flightDetect()                 // вызывается раз в секунду
+{
+  if (groundInit == false) {groundAlt = sensor.alti; landAlt = sensor.alti; groundInit = true;}
+  if (AutoStart == false) {return;} //
+  unsigned long now = millis();     //
+  if (inFlight == false)            // ===== НА ЗЕМЛЕ =====
+    {
+      groundAlt += (sensor.alti - groundAlt) * 0.05;    // медленно следим за высотой земли (постоянная ~20 с)
+      if (fabs(vario) > TO_VARIO)   // устойчивый подъём или снижение...
+        {if (varioTime == 0) {varioTime = now;}}        // ... засекаем время
+      else {varioTime = 0;}         //
+      if ((fabs(sensor.alti - groundAlt) > TO_ALT) ||                                  // ушли по высоте...
+          ((varioTime != 0) && (now - varioTime >= (unsigned long)TO_SEC*1000)))       // ... или вариометр держится
+        {takeOff();}                //
+    }
+  else                              // ===== В ПОЛЁТЕ =====
+    {
+      if (fabs(vario) > TO_VARIO) {landDismiss = false;}   // снова есть движение - можно спросить ещё раз
+      if ((fabs(vario) < LAND_VARIO) && (fabs(sensor.alti - landAlt) < LAND_ALT))
+        {
+          if (quietTime == 0) {quietTime = now;}           // засекаем время покоя
+          if ((now - quietTime >= (unsigned long)LAND_SEC*1000) && (askLanded == false)
+              && (landDismiss == false) && (MainMenu == false))
+            {askLanded = true; landChoice = true; triple_beep(); lcd.clear();}          // спрашиваем "LANDED?"
+        }
+      else {quietTime = 0; landAlt = sensor.alti;}         // покой прервался
+    }
 }
 
 ///// ВЫХОД ИЗ МЕНЮ С ОТВЕТОМ НА ВОПРОС О СОХРАНЕНИИ / LEAVE MENU /////
@@ -386,6 +461,16 @@ void setup()
 ///// ПОДПРОГРАММА ВЫВОДА ДАННЫХ НА ЭКРАН / LCD OUTPUT /////
 void lcd_out()                                                          // функция вывода значений на экран code by nuclear_XONIX (Ильюшенко Андрей, Iliushenko Andrei)
 {                                                                       // 
+if (askLanded == true)                                                  // экран вопроса о посадке
+  {                                                                     //
+    lcd.setCursor(0,0);                                                 //
+    lcd.print("LANDED?         ");                                      //
+    lcd.setCursor(0,1);                                                 //
+    if (landChoice == true) {lcd.print("  > YES     no  ");}            // выбран ответ YES
+    else                    {lcd.print("    yes   > NO  ");}            // выбран ответ NO
+    return;                                                             //
+  }                                                                     //
+
 if (Alarm == false)                                                     // если тревога выключена
 {                                                                       //
 if (AfterAlarmFlag == true)                                             // если взведён флаг очистки после тревоги, то
@@ -438,7 +523,7 @@ if (windowCount == 0)                                                   // ес�
 ///// ВЫВОД ВРЕМЕНИ / TIME OUTPUT (Min) /////
   lcd.setCursor(11,0);                                                  //
   lcd.print("Tm");                                                      // печатаем Tm (Time minute)
-  dtostrf((((millis()-timeZero)/1000)/60),3, 0, outtime);               // перевод значения отсчитанного времени в массив символов для возможности округления до целых
+  dtostrf(((flightMs/1000)/60),3, 0, outtime);               // перевод значения отсчитанного времени в массив символов для возможности округления до целых
   lcd.print(outtime);                                                   // вывод значений времени с округлением до целых
 
 ///// ВЫВОД ВЫСОТЫ НАД УРОВНЕМ МОРЯ / ALT ABOVE SEA OUTPUT (m) /////
@@ -600,6 +685,7 @@ void Menu()                                                                     
     else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
     else if (menuCount == 6) {VarioMode();}                                       // 7 экран меню - режим работы вариометра
     else if (menuCount == 7) {AvgTime();}                                         // 8 экран меню - время усреднения показаний
+    else if (menuCount == 8) {AutoStartSet();}                                     // 9 экран меню - автоопределение старта
 }                                                                                 //
 
 ///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -747,6 +833,16 @@ void LED_light()                                                                
 }                                                                                 //
 
 ///// ПОДПРОГРАММА ВЫБОРА РЕЖИМА ВАРИОМЕТРА / VARIO MODE SET /////
+///// АВТООПРЕДЕЛЕНИЕ СТАРТА / AUTO TAKE-OFF ON/OFF /////
+void AutoStartSet()                                                               //
+{                                                                                 //
+  lcd.setCursor(0,1);                                                             //
+  lcd.print("Auto start ");                                                       // рисуем строку "Auto start"
+  lcd.setCursor(12,1);                                                            //
+  if (AutoStart == true) {lcd.print("  ON");}                                     //
+  else {lcd.print(" OFF");}                                                       //
+}                                                                                 //
+
 ///// ВРЕМЯ УСРЕДНЕНИЯ ПОКАЗАНИЙ / AVERAGING TIME /////
 void AvgTime()                                                                    //
 {                                                                                 //
@@ -827,7 +923,12 @@ if (vario>-0.3) {Alarm = false;}                                                
 if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 1 нажата и не было зарегистрировано длительное нажатие (короче, это короткий клик)
   {                                                                                       //
     button_beep();                                                                        // сигнал при нажатии клавиши
-    if (MainMenu == false)                                                                // ... и если мы не в МЕНЮ ...
+    if (askLanded == true)                                                                // если показан вопрос о посадке...
+      {
+        if (landChoice == true) {landChoice = false;}                                     // ... двигаем выбор YES/NO
+        else {landChoice = true;}                                                         //
+      }
+    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
       {                                                                                   //
         MainMenu = true;                                                                  // то включается режим меню
         backupSettings();                                                         // запоминаем настройки, что бы ответ NO мог их вернуть
@@ -848,7 +949,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           }
         else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
           {
-            if (menuCount == 0) {menuCount = 8;}                                          // с первой страницы переходим на последнюю
+            if (menuCount == 0) {menuCount = 9;}                                          // с первой страницы переходим на последнюю
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
@@ -859,11 +960,13 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
 if (Buttom1.click())                                                                      // если кнопка 1 зажата больше 1 секунды, то... (это длинный клик)
   {                                                                                       //
     long_beep();                                                                          // длинный бип
-    if (MainMenu == false)                                                                // ... и если мы не в МЕНЮ ...
+    if (askLanded == true) {}                                                             // во время вопроса о посадке длинные нажатия не работают
+    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
       {                                                                                   //
         lcd.setCursor(13,0);                                                              // ОБНУЛЯЕМ ВРЕМЯ по длительному нажатию КЛАВИШИ 1
         lcd.print("   ");                                                                 // затираем старое значение времени
         timeZero = millis();                                                              // присвоение значения переменной для обнуления времени      
+        flightMs = 0;                                                                     // обнуляем показание таймера полёта
       }                                                                                   // 
     else                                                                                  // ... если мы в меню
       {
@@ -884,7 +987,12 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
   {                                                                                       //
     button_beep();                                                                        // сигнал при нажатии клавиши
     lcd.clear();                                                                          // очистка экрана при нажатии кнопки
-    if (MainMenu == false)                                                                // ... и если мы не в МЕНЮ ...
+    if (askLanded == true)                                                                // если показан вопрос о посадке...
+      {
+        if (landChoice == true) {landChoice = false;}                                     // ... двигаем выбор YES/NO
+        else {landChoice = true;}                                                         //
+      }
+    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
       {                                                                                   // 
         if (windowCount == 0)                                                             // если мы в первом главном экране
           {                                                                               //
@@ -916,7 +1024,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // иначе листаем страницы меню
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 8) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 9) {menuCount = 0;}                                         // после последней страницы - снова первая
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
@@ -925,7 +1033,8 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
 if (Buttom2.click())                                                                      // если кнопка 2 зажата больше 1 секунды, то... (длинный клик)
   {                                                                                       // 
     SSL_beep();                                                                           // вызов функции КОРОТКОГО-КОРОТКОГО-ДЛИННОГО ПИСКА
-    if (MainMenu == false)                                                                // ... и если мы не в МЕНЮ ...
+    if (askLanded == true) {}                                                             // во время вопроса о посадке длинные нажатия не работают
+    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
       {                                                                                   // ОБНУЛЕНИЕ ВЫСОТ ДЛИННЫМ НАЖАТИЕМ КНИПКИ 2
         if (cnt == 4)                                                                     // действие для ВЫСОТЫ по давлению на УРОВНЕ МОРЯ (обнуление высоты)
           {                                                                               //
@@ -992,7 +1101,18 @@ Buttom2.release();                                                              
 if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 3 нажата и не было зарегистрировано длительное нажатие (короткий клик)
   {                                                                                       //
     button_beep();                                                                        // сигнал при нажатии клавиши
-    if (MainMenu == false)                                                                // ... если мы не в МЕНЮ, то...
+    if (askLanded == true)                                                                // если показан вопрос о посадке...
+      {
+        if (landChoice == true) {landed();}                                               // YES - заканчиваем полёт
+        else                                                                              // NO - продолжаем полёт
+          {
+            askLanded = false;                                                            //
+            landDismiss = true;                                                           // не спрашиваем снова, пока не появится движение
+            quietTime = 0;                                                                //
+            lcd.clear();                                                                  //
+          }
+      }
+    else if (MainMenu == false)                                                           // ... если мы не в МЕНЮ, то...
       {                                                                                   // 
         windowCount++;                                                                    // ... переключаем главные экраны (в данной строке увеличиваем счётчик экрана)
         if (windowCount == 4)                                                             // если счётчик дошёл до трёх, то...
@@ -1060,6 +1180,16 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             if (AvgCount == 5) {AvgCount = 0;}                                            // после последнего значения - снова первое
             avgFill = 0;                                                                  // начинаем накопление заново
           }                                                                               //
+        if (menuCount == 8)                                                               // ...если мы в режиме автоопределения старта
+          {                                                                               //
+            if (AutoStart == true) {AutoStart = false;}                                   //
+            else {AutoStart = true;}                                                      //
+            inFlight = false;                                                             // начинаем определение заново
+            askLanded = false;                                                            //
+            varioTime = 0;                                                                //
+            quietTime = 0;                                                                //
+            groundInit = false;                                                           //
+          }                                                                               //
       }                                                                                   //
   }                                                                                       //
 
@@ -1067,7 +1197,8 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
 if (Buttom3.click())                                                                      // если кнопка 3 зажата больше 1 секунды, то... (длительное нажатие)
   {                                                                                       //
     triple_beep();                                                                        // вызов функции ТРОЙНОГО ПИСКА
-    if (MainMenu == false)                                                                // ... если мы не в МЕНЮ...
+    if (askLanded == true) {}                                                             // во время вопроса о посадке длинные нажатия не работают
+    else if (MainMenu == false)                                                           // ... если мы не в МЕНЮ...
       {
         if (windowCount == 0)                                                             // если мы в первом главном окне
           {                                                                               // ОТКЛЮЧАЕМ/ВКЛЮЧАЕМ звук вариометра
@@ -1115,6 +1246,8 @@ altitude = sensor.alti-altTmp;                                                  
 altitudeAdd = sensor.alti-altTmpAdd;                                                      // ДОПОЛНИТЕЛЬНАЯ ВЫСОТА - присвоение переменной altitudeAdd (высота старта или дополнительная высота) значения высоты с датчика минус высота в точке обнуления
 altitudeSEA = -29.21*float(log((sensor.pres*MMHG_TO_HPA)/presSea))*(sensor.temp+273.15);                // ВЫСОТА ПО УРОВНЮ МОРЯ - вычисление по приведённому давлению, давлению в данный момент и значению температуры
 
+if ((AutoStart == false) || (inFlight == true)) {flightMs = millis() - timeZero;}   // таймер полёта идёт только в полёте
+
 ///// УСРЕДНЕНИЕ ПОКАЗАНИЙ ВАРИОМЕТРА ДЛЯ ЭКРАНА / AVERAGED VARIO FOR THE SCREEN /////
 if (millis() - avgTime >= 1000)                                         // раз в секунду запоминаем высоту
   {
@@ -1123,6 +1256,7 @@ if (millis() - avgTime >= 1000)                                         // ра�
     if (avgIdx == 31) {avgIdx = 0;}                                     //
     avgAlt[avgIdx] = sensor.alti;                                       //
     if (avgFill < 31) {avgFill++;}                                      //
+    flightDetect();                                                     // проверяем старт / посадку
     byte n = avgSec[AvgCount];                                          // выбранное время усреднения
     if (avgFill > n)                                                    // когда снимков накопилось достаточно...
       {
