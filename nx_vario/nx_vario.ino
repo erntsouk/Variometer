@@ -873,10 +873,6 @@ if (Buttom1.click())                                                            
             saveChoice = true;                                                            // по умолчанию - YES
             lcd.clear();                                                                  //
           }
-        else                                                                              // если вопрос уже показан - выполняем ответ
-          {
-            exitMenu();                                                                   //
-          }
       }
     longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
   }                                                                                       //
