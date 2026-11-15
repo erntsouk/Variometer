@@ -23,10 +23,6 @@ VarioLCD lcd(16, 2);
 #define p 3                         // пин пищалки
 #define gLED 7                      // пин ЗЕЛЕНОГО диода
 #define rLED 8                      // пин КРАСНОГО диода
-#define BAT_PIN A0                  // пин измерения напряжения батареи (через делитель)
-#define BAT_DIV 0.3197              // МОЖНО МЕНЯТЬ!!! коэффициент делителя R2/(R1+R2), для 100к и 47к
-#define BAT_FULL 9.0                // МОЖНО МЕНЯТЬ!!! напряжение полной батареи, В
-#define BAT_EMPTY 6.5               // МОЖНО МЕНЯТЬ!!! напряжение разряженной батареи, В
 
 Bounce b1 = Bounce();               // создаём объект Bounce 1 (для удаления дребезга кнопок)
 Bounce b2 = Bounce();               // создаём объект Bounce 2 (для удаления дребезга кнопок)
@@ -265,6 +261,27 @@ void saveSettings()
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
 }
 
+///// СНИМОК НАСТРОЕК ПРИ ВХОДЕ В МЕНЮ / SETTINGS BACKUP ON MENU ENTRY /////
+byte bkTrUP, bkTrDN, bkVol, bkAvg;  // копии настроек на момент входа в меню
+boolean bkLED, bkBtn, bkTherm;      //
+float bkPres;                       //
+
+void backupSettings()               // запоминаем настройки при входе в меню
+{
+  bkTrUP = TrUPcount; bkTrDN = TrDNcount; bkVol = volCount; bkAvg = AvgCount;
+  bkLED = LED_ON; bkBtn = button_beep_ON; bkTherm = Thermal_ON;
+  bkPres = presSea;
+}
+
+void restoreSettings()              // возвращаем настройки, какими они были при входе в меню
+{
+  TrUPcount = bkTrUP; TrDNcount = bkTrDN; volCount = bkVol; AvgCount = bkAvg;
+  LED_ON = bkLED; button_beep_ON = bkBtn; Thermal_ON = bkTherm;
+  presSea = bkPres;
+  applySettings();
+  avgFill = 0;                      // усреднение начинаем заново
+}
+
 ///// ВЫХОД ИЗ МЕНЮ С ОТВЕТОМ НА ВОПРОС О СОХРАНЕНИИ / LEAVE MENU /////
 void exitMenu()
 {
@@ -280,13 +297,12 @@ void exitMenu()
       presSTR = presToStr(presTMP);   //
     }
   if (saveChoice == true) {saveSettings();}   // YES - сохраняем настройки в память
-  else                                        // NO - возвращаем настройки из памяти
+  else                                        // NO - возвращаем настройки, какими они были при входе в меню
     {
-      loadSettings();                 //
-      applySettings();                //
-      presTMP = presSea;              //
-      presSTR = presToStr(presTMP);   //
+      restoreSettings();              //
     }
+  presTMP = presSea;                  //
+  presSTR = presToStr(presTMP);       //
   beep_ON = true;                     // включаем звуки вариометра
   lcd.clear();                        // очищаем экран
 }
@@ -583,7 +599,6 @@ void Menu()                                                                     
     else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
     else if (menuCount == 6) {VarioMode();}                                       // 7 экран меню - режим работы вариометра
     else if (menuCount == 7) {AvgTime();}                                         // 8 экран меню - время усреднения показаний
-    else if (menuCount == 8) {BatteryInfo();}                                     // 9 экран меню - напряжение батареи
 }                                                                                 //
 
 ///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -731,31 +746,6 @@ void LED_light()                                                                
 }                                                                                 //
 
 ///// ПОДПРОГРАММА ВЫБОРА РЕЖИМА ВАРИОМЕТРА / VARIO MODE SET /////
-///// НАПРЯЖЕНИЕ БАТАРЕИ / BATTERY VOLTAGE /////
-float batteryVolts()                                                              // измеряем напряжение батареи
-{                                                                                 //
-  unsigned int sum = 0;                                                           //
-  for (byte i = 0; i < 8; i++) {sum += analogRead(BAT_PIN);}                       // усредняем 8 измерений
-  return (sum / 8.0) * (5.0 / 1023.0) / BAT_DIV;                                   // пересчитываем через делитель
-}                                                                                 //
-
-void BatteryInfo()                                                                //
-{                                                                                 //
-  float v = batteryVolts();                                                       //
-  int pct = (v - BAT_EMPTY) * 100.0 / (BAT_FULL - BAT_EMPTY);                      // переводим в проценты
-  if (pct < 0) {pct = 0;}                                                         //
-  if (pct > 100) {pct = 100;}                                                     //
-  lcd.setCursor(0,1);                                                             //
-  lcd.print("Bat ");                                                              // рисуем строку "Bat"
-  lcd.print(v,1);                                                                 // выводим напряжение
-  lcd.print("V   ");                                                              //
-  lcd.setCursor(12,1);                                                            //
-  if (pct < 100) {lcd.print(" ");}                                                // выравниваем по правому краю
-  if (pct < 10) {lcd.print(" ");}                                                 //
-  lcd.print(pct);                                                                 // выводим проценты
-  lcd.print("%");                                                                 //
-}                                                                                 //
-
 ///// ВРЕМЯ УСРЕДНЕНИЯ ПОКАЗАНИЙ / AVERAGING TIME /////
 void AvgTime()                                                                    //
 {                                                                                 //
@@ -839,6 +829,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
     if (MainMenu == false)                                                                // ... и если мы не в МЕНЮ ...
       {                                                                                   //
         MainMenu = true;                                                                  // то включается режим меню
+        backupSettings();                                                         // запоминаем настройки, что бы ответ NO мог их вернуть
           s0 = presSTR[0];                                                                // присваиваем строке s0 первый символ в значении давления
           s1 = presSTR[1];                                                                // присваиваем строке s1 второй символ в значении давления
           s2 = presSTR[2];                                                                // присваиваем строке s2 третий символ в значении давления
@@ -855,7 +846,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           }
         else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
           {
-            if (menuCount == 0) {menuCount = 9;}                                          // с первой страницы переходим на последнюю
+            if (menuCount == 0) {menuCount = 8;}                                          // с первой страницы переходим на последнюю
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
@@ -927,7 +918,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // иначе листаем страницы меню
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 9) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 8) {menuCount = 0;}                                         // после последней страницы - снова первая
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
@@ -974,7 +965,6 @@ if (Buttom2.click())                                                            
                     presSea = presTMP;                                                    //
                     symCount = 0;                                                         //
                     altSEATmp = 0;                                                        //
-                    saveSettings();                                                       // сохраняем давление в память
                   }                                                                       //
               }                                                                           //
             else                                                                          // --- режим "высота" ---
@@ -990,7 +980,6 @@ if (Buttom2.click())                                                            
                     altChange = false;                                                    // заканчиваем ввод
                     symCount = 0;                                                         //
                     altSEATmp = 0;                                                        //
-                    saveSettings();                                                       // сохраняем давление в память
                   }                                                                       //
               }                                                                           //
           }                                                                               //
@@ -1074,7 +1063,6 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             if (AvgCount == 5) {AvgCount = 0;}                                            // после последнего значения - снова первое
             avgFill = 0;                                                                  // начинаем накопление заново
           }                                                                               //
-        saveSettings();                                                            // сохраняем изменённую настройку сразу
       }                                                                                   //
   }                                                                                       //
 
@@ -1119,7 +1107,6 @@ if (Buttom3.click())                                                            
         s3 = '3';                                                                         // посимвольное присвоение строкам начальных значений давления
         s4 = '2';                                                                         // посимвольное присвоение строкам начальных значений давления
         altSEATmp = 0;                                                                    // обнуление корректируемой высоты (нужно, что бы, при ранее обнулённой высоте у моря, значение вернулось к расчетному по давлению)
-        saveSettings();                                                               // сохраняем сброшенное давление
       }                                                                                   //
     longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
   }                                                                                       //
