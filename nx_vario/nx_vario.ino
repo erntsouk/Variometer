@@ -95,6 +95,7 @@ boolean B3Alt = false;              // нажатие кнопки 3 в режи
 boolean Stmp = false;               // переменная для вывода символа "B" (НЕОБЯЗАТЕЛЬНАЯ) 
 boolean longpress = false;          // переменная для проверки на долгое нажатие кнопки
 boolean beep_ON = true;             // переменная для включения/выключения звука вариометра
+boolean soundManual = false;        // звук включён/выключен вручную - автомат его не трогает
 boolean button_beep_ON = true;      // переменная для включения/выключения звука клавиш                                   - МОЖНО МЕНЯТЬ!!!
 boolean LED_ON = false;             // переменная для включения/выключения светодиодной индикации                         - МОЖНО МЕНЯТЬ!!!
 boolean gLEDtmp = false;            // переменная для включения/выключения зеленого светодиода
@@ -313,6 +314,8 @@ void takeOff()                      // старт обнаружен
   maxAltSea = 0; maxAltStt = 0; maxAltAdd = 0;   // и максимальные высоты
   quietTime = 0;                    //
   landAlt = sensor.alti;            //
+  beep_ON = true;                  // включаем звук вариометра
+  soundManual = false;             //
   triple_beep();                    // сигнал о старте
 }
 
@@ -324,6 +327,8 @@ void landed()                       // посадка подтверждена
   varioTime = 0;                    //
   quietTime = 0;                    //
   landDismiss = false;              //
+  beep_ON = false;                 // на земле звук вариометра выключен
+  soundManual = false;             //
   SSL_beep();                       // сигнал о посадке
   lcd.clear();                      //
 }
@@ -331,6 +336,8 @@ void landed()                       // посадка подтверждена
 void flightDetect()                 // вызывается раз в секунду
 {
   if (groundInit == false) {groundAlt = sensor.alti; landAlt = sensor.alti; groundInit = true;}
+  if ((MainMenu == false) && (soundManual == false))                                 // на земле молчим, в полёте звучим
+    {beep_ON = ((AutoStart == false) || (inFlight == true));}                        //
   if (AutoStart == false) {return;} //
   unsigned long now = millis();     //
   if (inFlight == false)            // ===== НА ЗЕМЛЕ =====
@@ -378,7 +385,8 @@ void exitMenu()
     }
   presTMP = presSea;                  //
   presSTR = presToStr(presTMP);       //
-  beep_ON = true;                     // включаем звуки вариометра
+  beep_ON = ((AutoStart == false) || (inFlight == true));   // звук вариометра включается только в полёте
+  soundManual = false;                //
   lcd.clear();                        // очищаем экран
 }
 
@@ -1204,6 +1212,7 @@ if (Buttom3.click())                                                            
           {                                                                               // ОТКЛЮЧАЕМ/ВКЛЮЧАЕМ звук вариометра
             if (beep_ON == true) {beep_ON = false;}                                       // если звук включен, то выключаем
             else {beep_ON = true;}                                                        // иначе включаем
+            soundManual = true;                                                            // дальше звуком управляет пилот, а не автомат
           }                                                                               //
         if (windowCount == 1)                                                             // если мы во втором главном окне
           {                                                                               // ОБНУЛЕНИЕ МАКСИМАЛЬНЫХ ЗНАЧЕНИЙ ВЫСОТ
