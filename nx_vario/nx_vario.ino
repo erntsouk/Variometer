@@ -111,7 +111,8 @@ boolean AlarmFlag = false;          // флаг для работы сигнал
 boolean Alarm = false;              // флаг ВКЛ/ВЫКЛ сигнализации при падении
 boolean AfterAlarmFlag = false;     // флаг для затирания оставшихся после тревоги символов
 boolean AltDifTmpFlag = false;      // флаг проверки был ли сброс высоты, или нет (единый для всех высот, но в коде выбирается проверка по значению cnt)
-boolean Thermal_ON = false;         // флаг проверки включения режима Thermal для вариометра
+byte RespCount = 3;                 // выбранная скорость реакции вариометра (индекс в respSamples)
+const byte respSamples[5] = {10, 20, 30, 40, 50};   // МОЖНО МЕНЯТЬ!!! сколько точек усредняется на каждом уровне
 
 static char outtemp[5];             // массив символов для отображения температуры с округлением до десятых
 static char outvario[5];            // массив символов для отображения данных вариометра с округлением до десятых
@@ -239,27 +240,28 @@ byte arrow_e_down[8]                // кодируем символ пусто�
 ///// СОХРАНЕНИЕ НАСТРОЕК В ПАМЯТЬ / SAVED SETTINGS (EEPROM) /////
 struct SavedSettings {
   uint16_t magic;
-  byte TrUP, TrDN, vol, avg;
+  byte TrUP, TrDN, vol, avg, resp;
   boolean autoStart;
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55D       // если изменить это число, сохранённые настройки сбросятся
+#define SETTINGS_MAGIC 0xA55E       // если изменить это число, сохранённые настройки сбросятся
 
 void applySettings()
 {
   vario_up = treshUP[TrUPcount];
   vario_down = treshDN[TrDNcount];
+  applyResponse();                  // и скорость реакции
 }
 
 void loadSettings()
 {
   SavedSettings s;
   EEPROM.get(0, s);
-  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.presSea > 300.0 && s.presSea < 1200.0)
+  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.presSea > 300.0 && s.presSea < 1200.0)
     {
       TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
-      LED_ON = s.led; button_beep_ON = s.btnBeep; Thermal_ON = s.thermal; AutoStart = s.autoStart;
+      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart;
       presSea = s.presSea;
     }
 }
@@ -269,30 +271,43 @@ void saveSettings()
   SavedSettings s;
   s.magic = SETTINGS_MAGIC;
   s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount; s.avg = AvgCount;
-  s.led = LED_ON; s.btnBeep = button_beep_ON; s.thermal = Thermal_ON; s.autoStart = AutoStart;
+  s.led = LED_ON; s.btnBeep = button_beep_ON; s.resp = RespCount; s.autoStart = AutoStart;
   s.presSea = presSea;
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
 }
 
 ///// СНИМОК НАСТРОЕК ПРИ ВХОДЕ В МЕНЮ / SETTINGS BACKUP ON MENU ENTRY /////
 byte bkTrUP, bkTrDN, bkVol, bkAvg;  // копии настроек на момент входа в меню
-boolean bkLED, bkBtn, bkTherm, bkAuto;   //
+boolean bkLED, bkBtn, bkAuto;       //
+byte bkResp;                        //
 float bkPres;                       //
 
 void backupSettings()               // запоминаем настройки при входе в меню
 {
   bkTrUP = TrUPcount; bkTrDN = TrDNcount; bkVol = volCount; bkAvg = AvgCount;
-  bkLED = LED_ON; bkBtn = button_beep_ON; bkTherm = Thermal_ON; bkAuto = AutoStart;
+  bkLED = LED_ON; bkBtn = button_beep_ON; bkResp = RespCount; bkAuto = AutoStart;
   bkPres = presSea;
 }
 
 void restoreSettings()              // возвращаем настройки, какими они были при входе в меню
 {
   TrUPcount = bkTrUP; TrDNcount = bkTrDN; volCount = bkVol; AvgCount = bkAvg;
-  LED_ON = bkLED; button_beep_ON = bkBtn; Thermal_ON = bkTherm; AutoStart = bkAuto;
+  LED_ON = bkLED; button_beep_ON = bkBtn; RespCount = bkResp; AutoStart = bkAuto;
   presSea = bkPres;
   applySettings();
   avgFill = 0;                      // усреднение начинаем заново
+}
+
+///// СКОРОСТЬ РЕАКЦИИ ВАРИОМЕТРА / VARIO RESPONSE SPEED /////
+void applyResponse()                // применяем выбранную скорость реакции
+{
+  samples = respSamples[RespCount]; //
+  maxsamples = samples + 10;        // запас истории
+  if (maxsamples > 50) {maxsamples = 50;}   // больше массив не вмещает
+  tempo = millis();                 // сбрасываем усреднитель, что бы показание не прыгнуло
+  N1 = 0; N2 = 0; N3 = 0;           //
+  D1 = 0; D2 = 0;                   //
+  vario = 0;                        //
 }
 
 ///// АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ СТАРТА И ПОСАДКИ / AUTO TAKE-OFF AND LANDING /////
@@ -691,7 +706,7 @@ void Menu()                                                                     
     else if (menuCount == 3) {LED_light();}                                       // 4 экран меню - ВКЛ/ВЫКЛ светодиодов
     else if (menuCount == 4) {ButtonBeep();}                                      // 5 экран меню - ВКЛ/ВЫКЛ звука клавиш
     else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
-    else if (menuCount == 6) {VarioMode();}                                       // 7 экран меню - режим работы вариометра
+    else if (menuCount == 6) {Response();}                                        // 7 экран меню - скорость реакции вариометра
     else if (menuCount == 7) {AvgTime();}                                         // 8 экран меню - время усреднения показаний
     else if (menuCount == 8) {AutoStartSet();}                                     // 9 экран меню - автоопределение старта
 }                                                                                 //
@@ -876,37 +891,18 @@ void VolumeSet()                                                                
 }                                                                                 //
 
 ///// РЕЖИМ РАБОТЫ ВАРИОМЕТРА / VARIO MODE SET /////
-void VarioMode()                                                                  //
+///// СКОРОСТЬ РЕАКЦИИ / RESPONSE SPEED SET /////
+void Response()                                                                   //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Vario mode ");                                                       // рисуем строку "Vario mode"
-  lcd.setCursor(13,1);                                                            //
-    if (Thermal_ON == true)                                                       // если выбран режим Thermal, то...
-      {                                                                           //
-        lcd.print("Trm");                                                         // рисуем "Trm"
-        samples = 30;                                                             // уменьшаем количество сэмплов (скорость обработки увеличивается, но возрастает количество ложных срабатываний)
-        maxsamples = 40;                                                          // уменьшаем количество сэмплов
-        tempo = millis();                                                         // описание переменной tempo типа float и присвоение ей значения функции millis() - отсчитывает время от начала работы программы в миллисекундах 
-        N1 = 0;                                                                   // переменная для работы усреднителя
-        N2 = 0;                                                                   // переменная для работы усреднителя
-        N3 = 0;                                                                   // переменная для работы усреднителя
-        D1 = 0;                                                                   // переменная для работы усреднителя
-        D2 = 0;                                                                   // переменная для работы усреднителя
-        vario = 0;                                                                // обнуляем вариометр перед расчётом
-      }                                                                           //
-    else                                                                          // если выбран режим Standard, то...
-      {                                                                           //
-        lcd.print("Std");                                                         // рисуем "Std"
-        samples = 40;                                                             // увеличиваем количество сэмплов (скорость обработки увеличивается, но возрастает количество ложных срабатываний)
-        maxsamples = 50;                                                          // увеличиваем количество сэмплов
-        tempo = millis();                                                         // описание переменной tempo типа float и присвоение ей значения функции millis() - отсчитывает время от начала работы программы в миллисекундах 
-        N1 = 0;                                                                   // переменная для работы усреднителя
-        N2 = 0;                                                                   // переменная для работы усреднителя
-        N3 = 0;                                                                   // переменная для работы усреднителя
-        D1 = 0;                                                                   // переменная для работы усреднителя
-        D2 = 0;                                                                   // переменная для работы усреднителя
-        vario = 0;                                                                // обнуляем вариометр перед расчётом
-      }                                                                           // 
+  lcd.print("Resp ");                                                             // рисуем строку "Resp"
+  lcd.print(RespCount+1);                                                         // выводим уровень 1...5
+  lcd.setCursor(10,1);                                                            //
+  float win = (tim[maxsamples] - tim[maxsamples-samples]) / 1000.0;                // реальное окно усреднения, сек
+  if (win < 0) {win = 0;}                                                         //
+  if (win < 10) {lcd.print(" ");}                                                 //
+  lcd.print(win,1);                                                               // выводим окно в секундах
+  lcd.print("s ");                                                                //
 }                                                                                 //
 
 ///// ВКЛ/ВЫКЛ ЗВУКА КЛАВИШ / BUTTON BEEP ON/OFF /////
@@ -1179,8 +1175,9 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
           }                                                                               //
         if (menuCount == 6)                                                               // ...если мы в режиме выбора работы вариометра
           {                                                                               //
-            if (Thermal_ON == true) {Thermal_ON = false;}                                 //
-            else {Thermal_ON = true;}                                                     //
+            RespCount++;                                                                  //
+            if (RespCount == 5) {RespCount = 0;}                                          // после последнего уровня - снова первый
+            applyResponse();                                                              // применяем новую скорость реакции
           }                                                                               //
         if (menuCount == 7)                                                               // ...если мы в режиме времени усреднения
           {                                                                               //
