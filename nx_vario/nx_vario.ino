@@ -112,7 +112,7 @@ unsigned int baseFreq = 600;        // vario base sound frequency, Hz
 byte volView = 0;                   // volume page view: 0 - volume, 1 - base frequency, 2 - buzzer
 boolean buzEdit = false;            // buzzer is being set
 byte BuzCount = 1;                  // selected buzzer value (index into buzVals)
-const float buzVals[6] = {-0.3, -0.2, -0.1, 0.0, 0.1, 99};   // CAN BE CHANGED!!! buzzer start, m/s (99 = OFF)
+const float buzVals[5] = {-0.3, -0.2, -0.1, 0.0, 99};   // CAN BE CHANGED!!! buzzer start, m/s (99 = OFF)
 boolean volEdit = false;            // volume is being set
 boolean freqEdit = false;           // base frequency is being entered
 boolean B3Freq = false;             // button 3 pressed while entering frequency
@@ -138,7 +138,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v33"            // program version shown on the info page
+#define FW_VERSION "v34"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -299,7 +299,7 @@ void loadSettings()
   if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.buz < 6 && s.base >= FREQ_MIN && s.base <= FREQ_MAX && s.presSea > 300.0 && s.presSea < 1200.0)
     {
       TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
-      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart; baseFreq = s.base; BuzCount = s.buz;
+      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart; baseFreq = s.base; BuzCount = (s.buz < 5) ? s.buz : 4;
       presSea = s.presSea;
     }
 }
@@ -1612,7 +1612,7 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             else if (buzEdit == true)                                                     // setting the buzzer - next value
               {                                                                           //
                 BuzCount++;                                                               //
-                if (BuzCount == 6) {BuzCount = 0;}                                        // after OFF back to -0.3
+                if (BuzCount == 5) {BuzCount = 0;}                                        // after OFF back to -0.3
               }                                                                           //
             else                                                                          // otherwise switch view: volume -> frequency -> buzzer
               {                                                                           //
@@ -1784,8 +1784,9 @@ if ((tempo-beep)>Beep_period)                                           //
   else if ((buzVals[BuzCount] < 50) && (vario > buzVals[BuzCount]) && (vario <= vario_up))   // buzzer: weak lift, below the climb threshold
   {                                                                     //
     Stmp = true;                                                        //
-    Beep_period = 140;                                                  // quick soft clicks
-    playTone(baseFreq, 25);                                             //
+    Beep_period = 40;                                                   // refresh every 40 ms - one continuous tone
+    playTone(baseFreq, 150);                                            // steady tone at the base frequency
+    if (OCR2B > 1) {OCR2B >>= 1;}                                       // half the duty = softer than the vario beeps
   }                                                                     //
   else if ((vario<vario_down))                      // sink sound
   {                                                                     //
