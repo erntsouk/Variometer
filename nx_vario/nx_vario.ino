@@ -118,7 +118,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v29"            // program version shown on the info page
+#define FW_VERSION "v30"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -481,11 +481,13 @@ void setup()
         delay(100);                       //
       }                                   //
   lcd.clear();                      // clear screen
+  delay(5);                         // give the display time to finish clearing
   lcd.setCursor(3,0);               //
   lcd.print("def. pres.");          // label "default pressure"
-  lcd.setCursor(5,1);               //
-  lcd.print(String(presSea,1)+" hPa");   // show the start pressure in hPa
-  delay(1000);                      // 2 second delay
+  lcd.setCursor(3,1);               //
+  lcd.print(presSea,1);             // show the start pressure in hPa
+  lcd.print(" hPa");                //
+  delay(2000);                      // 2 second delay
   playTone((2500),70);                // double beep at start
   beepDelay(150);                       //
   playTone((2500),70);                //
