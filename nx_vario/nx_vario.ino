@@ -51,14 +51,21 @@ float minVarioAvg = 0;              // minimum averaged vario value
 float presSea = 1013.25;            // sea level pressure in hPa (DEFAULT=1013.25)   - CAN BE CHANGED!!!
 float presTMP = 0;                  // variable for manual pressure entry
 float tempo = millis();             // tempo (float) = millis() - counts time since start in milliseconds
-float N1 = 0;                       // variable for the averager
-float N2 = 0;                       // variable for the averager
-float N3 = 0;                       // variable for the averager
-float D1 = 0;                       // variable for the averager
-float D2 = 0;                       // variable for the averager
 
-float alt[51];                                                          // array alt (float) for the averager, original size 51, mine 41
-float tim[51];                                                          // array tim (float) for the averager, original size 51, mine 41
+///// SENSOR FUSION: MPU6050 ACCELEROMETER + BMP180 BAROMETER /////
+const byte MPU = 0x68;              // MPU6050 I2C address
+boolean mpuOK = false;              // is the MPU6050 answering (without it the vario runs on the barometer only)
+float gbx = 0, gby = 0, gbz = 0;    // gyro bias in deg/s, measured at start
+float g0 = 1.0;                     // gravity as this accelerometer reads it, g, measured at start
+float ux = 0, uy = 0, uz = 1;       // "up" direction in the sensor's own axes (unit vector)
+float hEst = 0;                     // fused altitude, m
+float vEst = 0;                     // fused climb rate, m/s
+float bEst = 0;                     // accelerometer bias estimate, m/s2
+float fOmega = 0.7;                 // filter speed, 1/s (set by the Response page)
+unsigned long fusTime = 0;          // time of the last filter update, us
+boolean fusInit = false;            // has the filter started
+#define TILT_K 0.02                 // CAN BE CHANGED!!! how fast "up" follows the accelerometer (0.01 - 0.05)
+
 float treshUP[5] = {0.1, 0.4, 0.5, 0.6, 0.7};                           // climb thresholds                       - CAN BE CHANGED!!! related variables: vario_up and TrUPcount
 float treshDN[5] = {-0.5, -0.7, -0.9, -1.1, -1.3};                      // sink thresholds                        - CAN BE CHANGED!!! related variables: vario_down and TrDNcount
 
@@ -118,7 +125,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v31"            // program version shown on the info page
+#define FW_VERSION "v32"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -127,8 +134,8 @@ boolean AlarmFlag = false;          // fall alarm flag
 boolean Alarm = false;              // fall alarm ON/OFF flag
 boolean AfterAlarmFlag = false;     // flag to clear characters left after the alarm
 boolean AltDifTmpFlag = false;      // flag: was the altitude reset or not (one for all altitudes, the code picks it by cnt)
-byte RespCount = 3;                 // selected vario response speed (index into respSamples)
-const byte respSamples[5] = {10, 20, 30, 40, 50};   // CAN BE CHANGED!!! how many points are averaged at each level
+byte RespCount = 3;                 // selected vario response speed (index into respOmega)
+const float respOmega[5] = {2.0, 1.4, 1.0, 0.7, 0.5};   // CAN BE CHANGED!!! filter speed for each Response level (higher = trusts the barometer more)
 float loopMs = 35;                  // average loop time in ms, measured outside the menu
 unsigned long lastLoop = 0;         // time of the previous loop
 
@@ -162,8 +169,6 @@ byte menuCount = 0;                 // menu page counter
 byte windowCount = 0;               // main screen counter
 byte symCount = 0;                  // number of the digit being entered (pressure entry)
 byte symbolINT = 0;                 // integer digit for pressure entry
-byte samples = 40;                  // original 40, mine 30 | to make the vario react faster, lower samples and maxsamples, but
-byte maxsamples = 50;               // original 50, mine 40 | then there will be more false triggers
 
 byte degree[8]                      // degree symbol
 { 
@@ -321,13 +326,94 @@ void restoreSettings()              // put the settings back as they were when t
 ///// VARIO RESPONSE SPEED /////
 void applyResponse()                // apply the selected response speed
 {
-  samples = respSamples[RespCount]; //
-  maxsamples = samples + 10;        // extra history
-  if (maxsamples > 50) {maxsamples = 50;}   // the array cannot hold more
-  tempo = millis();                 // reset the averager so the reading does not jump
-  N1 = 0; N2 = 0; N3 = 0;           //
-  D1 = 0; D2 = 0;                   //
-  vario = 0;                        //
+  fOmega = respOmega[RespCount];    // the filter picks it up on its next update
+}
+
+///// MPU6050 ACCESS /////
+void mpuWrite(byte reg, byte val)   // write one register of the MPU6050
+{
+  Wire.beginTransmission(MPU);
+  Wire.write(reg);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
+boolean mpuRead(int16_t *v)         // read ax, ay, az, temp, gx, gy, gz in one go
+{
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B);
+  if (Wire.endTransmission(false) != 0) {return false;}
+  if (Wire.requestFrom(MPU, (byte)14) != 14) {return false;}
+  for (byte i = 0; i < 7; i++)
+    {
+      byte hi = Wire.read();
+      byte lo = Wire.read();
+      v[i] = (int16_t)((hi << 8) | lo);
+    }
+  return true;
+}
+
+void mpuInit()                      // wake up and calibrate - the vario must be still
+{
+  Wire.beginTransmission(MPU);
+  if (Wire.endTransmission() != 0) {mpuOK = false; return;}   // not connected
+  mpuWrite(0x6B, 0x00);             // wake up
+  mpuWrite(0x1C, 0x08);             // accelerometer range +-4 g
+  mpuWrite(0x1B, 0x00);             // gyro range +-250 deg/s
+  mpuWrite(0x1A, 0x03);             // built-in low-pass filter ~44 Hz
+  delay(100);                       //
+  int16_t v[7];
+  float sx = 0, sy = 0, sz = 0, sgx = 0, sgy = 0, sgz = 0;
+  byte n = 0;
+  for (byte i = 0; i < 100; i++)    // average 100 readings (~0.6 s)
+    {
+      if (mpuRead(v)) {sx += v[0]; sy += v[1]; sz += v[2]; sgx += v[4]; sgy += v[5]; sgz += v[6]; n++;}
+      delay(5);
+    }
+  if (n < 50) {mpuOK = false; return;}
+  sx /= n * 8192.0; sy /= n * 8192.0; sz /= n * 8192.0;     // g  (+-4 g range = 8192 per g)
+  gbx = sgx / (n * 131.0); gby = sgy / (n * 131.0); gbz = sgz / (n * 131.0);   // deg/s
+  g0 = sqrt(sx*sx + sy*sy + sz*sz); // gravity as this sensor reads it
+  if ((g0 < 0.5) || (g0 > 1.5)) {mpuOK = false; return;}    // nonsense - do not use it
+  ux = sx / g0; uy = sy / g0; uz = sz / g0;                  // "up" at start
+  mpuOK = true;
+}
+
+///// SENSOR FUSION /////
+// Accelerometer = fast but drifts, barometer = slow but honest.
+// A 3rd-order complementary filter (fixed-gain Kalman) uses the accelerometer for quick changes,
+// lets the barometer correct the altitude, and learns the accelerometer's bias on the way.
+void fusionUpdate(float hBaro)      // called every time the barometer has a new altitude
+{
+  unsigned long now = micros();
+  if (fusInit == false) {hEst = hBaro; vEst = 0; bEst = 0; fusTime = now; fusInit = true; return;}
+  float dt = (now - fusTime) / 1000000.0;
+  fusTime = now;
+  if ((dt <= 0) || (dt > 0.5)) {hEst = hBaro; return;}       // after a long pause just resync
+  float az = 0;                     // vertical acceleration, m/s2 (0 if there is no MPU6050)
+  int16_t v[7];
+  if (mpuOK && mpuRead(v))
+    {
+      float ax = v[0] / 8192.0, ay = v[1] / 8192.0, a_z = v[2] / 8192.0;   // g
+      float wx = (v[4] / 131.0 - gbx) * 0.0174533;           // rad/s, bias removed
+      float wy = (v[5] / 131.0 - gby) * 0.0174533;
+      float wz = (v[6] / 131.0 - gbz) * 0.0174533;
+      float nx = ux - (wy*uz - wz*uy) * dt;                  // turn "up" with the gyro
+      float ny = uy - (wz*ux - wx*uz) * dt;
+      float nz = uz - (wx*uy - wy*ux) * dt;
+      float am = sqrt(ax*ax + ay*ay + a_z*a_z);
+      if ((am > 0.5) && (am < 1.5))                          // nudge it toward the measured gravity
+        {nx += (ax/am - nx) * TILT_K; ny += (ay/am - ny) * TILT_K; nz += (a_z/am - nz) * TILT_K;}
+      float nm = sqrt(nx*nx + ny*ny + nz*nz);
+      ux = nx / nm; uy = ny / nm; uz = nz / nm;
+      az = ((ax*ux + ay*uy + a_z*uz) - g0) * 9.81;           // acceleration along "up", gravity removed
+    }
+  float e = hBaro - hEst;           // how far the barometer disagrees
+  float w = fOmega;
+  hEst += (vEst + 3*w*e) * dt;
+  vEst += (az - bEst + 3*w*w*e) * dt;
+  bEst -= w*w*w*e * dt;
+  vario = vEst;
 }
 
 ///// AUTO TAKE-OFF AND LANDING /////
@@ -493,7 +579,8 @@ void setup()
   lcd.setCursor(3,1);               //
   lcd.print(presSea,1);             // show the start pressure in hPa
   lcd.print(F(" hPa"));                //
-  delay(2000);                      // 2 second delay
+  mpuInit();                        // start and calibrate the MPU6050 (~0.7 s, keep the vario still)
+  delay(1300);                      // rest of the 2 second pause
   playTone((2500),70);                // double beep at start
   beepDelay(150);                       //
   playTone((2500),70);                //
@@ -949,7 +1036,8 @@ void InfoPage()                                                                 
   if (infoCount == 0) {lcd.print(F("Version   ")); lcd.print(FW_VERSION); lcd.print(F("   "));}
   else if (infoCount == 1) {lcd.print(F("Temp     ")); lcd.print(sensor.temp,1); lcd.print(F("C  "));}
   else if (infoCount == 2) {lcd.print(F("Loop      ")); lcd.print((int)loopMs); lcd.print(F("ms  "));}
-  else {lcd.print(F("Free RAM  ")); lcd.print(freeRam()); lcd.print(F("B  "));}
+  else if (infoCount == 3) {lcd.print(F("Free RAM  ")); lcd.print(freeRam()); lcd.print(F("B  "));}
+  else {lcd.print(F("Accel     ")); if (mpuOK) {lcd.print(F("OK    "));} else {lcd.print(F("none  "));}}
 }                                                                                 //
 
 ///// AVERAGING TIME /////
@@ -1028,7 +1116,7 @@ void Response()                                                                 
   lcd.print(F("Resp "));                                                             // draw "Resp"
   lcd.print(RespCount+1);                                                         // show level 1...5
   lcd.setCursor(10,1);                                                            //
-  float win = samples * loopMs / 1000.0;                                          // averaging window = points x loop time, seconds
+  float win = 1.0 / fOmega;                                          // averaging window = points x loop time, seconds
   if (win < 10) {lcd.print(F(" "));}                                                 //
   lcd.print(win,1);                                                               // show the window in seconds
   lcd.print(F("s "));                                                                //
@@ -1403,7 +1491,7 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
         if (menuCount == 10)                                                              // ...if we are on the info page
           {                                                                               //
             infoCount++;                                                                  // next info item
-            if (infoCount == 4) {infoCount = 0;}                                          //
+            if (infoCount == 5) {infoCount = 0;}                                          //
             lcd.clear();                                                                  //
           }                                                                               //
       }                                                                                   //
@@ -1503,39 +1591,9 @@ else                                                                    //
     if (maxAltAdd < altitudeAdd) {maxAltAdd = altitudeAdd;}             //
   }                                                                     //
 
-///// INITIAL VALUES FOR AVERAGER /////
-tempo = millis();                                                       // tempo (float) = millis() - counts time since start in milliseconds
-N1 = 0;                                                                 // variable for the averager
-N2 = 0;                                                                 // variable for the averager
-N3 = 0;                                                                 // variable for the averager
-D1 = 0;                                                                 // variable for the averager
-D2 = 0;                                                                 // variable for the averager
-
-///// ZERO VARIO /////
-vario = 0;                                                              // reset the vario before calculating
-
-///// AVERAGER CYCLE /////
-for(int cc=1; cc<=maxsamples; cc++)                                     // AVERAGER
-{                                                                       // Big thanks for it to the authors of these projects:
-  alt[(cc-1)] = alt[cc];                                                // http://www.instructables.com/id/GoFly-paraglidinghanglidinggliding-altimeter-v/?ALLSTEPS
-  tim[(cc-1)] = tim[cc];                                                // http://redhats.ru/variometer-arduino-2015/
-}                                                                       //
-                                                                        //
-alt[maxsamples] = sensor.alti;                                          //
-tim[maxsamples] = tempo;                                                //
-float stime = tim[maxsamples-samples];                                  //
-                                                                        //
-for(int cc=(maxsamples-samples); cc<maxsamples; cc++)                   //
-{                                                                       //
-  N1+=(tim[cc]-stime)*alt[cc];                                          //
-  N2+=(tim[cc]-stime);                                                  //
-  N3+=(alt[cc]);                                                        //
-  D1+=(tim[cc]-stime)*(tim[cc]-stime);                                  //
-  D2+=(tim[cc]-stime);                                                  //
-}                                                                       // end of the averager
-
-///// VARIO VALUES CALCULATING /////
-vario=1000*((samples*N1)-N2*N3)/(samples*D1-D2*D2);                     // VARIO CALCULATION
+///// SENSOR FUSION /////
+tempo = millis();                                                       // time base for the beeps
+fusionUpdate(sensor.alti);                                              // vario = fused climb rate (accelerometer + barometer)
 
 ///// VARIO SOUND OUTPUT /////
 if (beep_ON == true)                                                    // if sound mode is ON...
