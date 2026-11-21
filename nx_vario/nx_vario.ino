@@ -81,12 +81,12 @@ char s2 = '1';                      // digit of the sea level pressure (used whi
 char s3 = '3';                      // digit of the sea level pressure (used while entering the value)
 char s4 = '2';                      // digit of the sea level pressure (used while entering the value)
 
-String presSTR;                     // string used for manual pressure entry
+char presSTR[7] = "1013.2";         // string used for manual pressure entry
 char t0 = '0';                      // altitude digits (for the altitude setting)
 char t1 = '0';                      //
 char t2 = '0';                      //
 char t3 = '0';                      //
-String altSTR;                      // altitude string being edited
+char altSTR[5] = "0000";            // altitude string being edited
 int altSet = 0;                     // entered altitude in metres
 boolean altChange = false;          // altitude entry mode on/off
 #define FREQ_MIN 500                // CAN BE CHANGED!!! lowest base frequency, Hz
@@ -100,7 +100,7 @@ char f0 = '0';                      // base frequency digits
 char f1 = '6';                      //
 char f2 = '0';                      //
 char f3 = '0';                      //
-String freqSTR = "0600";            // base frequency string
+char freqSTR[5] = "0600";           // base frequency string
 boolean altMode = false;            // false - set pressure in hPa, true - set altitude in metres
 boolean B3Alt = false;              // button 3 pressed in altitude entry mode
 
@@ -118,7 +118,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v30"            // program version shown on the info page
+#define FW_VERSION "v31"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -414,7 +414,7 @@ void exitMenu()
     {
       presChange = false;             // ... turn off the mode
       presTMP = presSea;              // ... restore the previous value
-      presSTR = presToStr(presTMP);   //
+      presToStr(presTMP);   //
     }
   if (saveChoice == true) {saveSettings();}   // YES - save settings to memory
   else                                        // NO - put the settings back as they were when the menu opened
@@ -422,18 +422,24 @@ void exitMenu()
       restoreSettings();              //
     }
   presTMP = presSea;                  //
-  presSTR = presToStr(presTMP);       //
+  presToStr(presTMP);       //
   beep_ON = ((AutoStart == false) || (inFlight == true));   // vario sound turns on only in flight
   soundManual = false;                //
   lcd.clear();                        // clear the screen
 }
 
-String presToStr(float v)           // pressure as a string "1013.2" (4 digits + 1 after the point)
+void presToStr(float v)             // pressure as text "1013.2" (4 digits + 1 after the point), written into presSTR
 {
   char buf[10];
   dtostrf(v, 6, 1, buf);
   for (byte i = 0; buf[i] == ' '; i++) {buf[i] = '0';}
-  return String(buf);
+  for (byte i = 0; i < 6; i++) {presSTR[i] = buf[i];}
+  presSTR[6] = 0;
+}
+
+void put4(char *dst, char a, char b, char c, char d)   // four digit characters into a text
+{
+  dst[0] = a; dst[1] = b; dst[2] = c; dst[3] = d; dst[4] = 0;
 }
 
 void setup() 
@@ -442,7 +448,7 @@ void setup()
 
   loadSettings();                   // read the saved settings from EEPROM
   presTMP = presSea;                // temporary pressure (for calculations) = default pressure (presSea is used in the altitude formula)
-  presSTR = presToStr(presTMP);        // convert pressure from float to String
+  presToStr(presTMP);        // convert pressure from float to String
   applySettings();                  // apply thresholds from the saved settings (vario_up, vario_down)
   backupSettings();                 // first settings snapshot (in case NO is answered before the menu is ever opened)
   
@@ -467,9 +473,9 @@ void setup()
   
   lcd.init();                       // LCD init
   lcd.setCursor(0,0);               //
-  lcd.print(" HELLO ERNESTO ");    // first line of the start screen
+  lcd.print(F(" HELLO ERNESTO "));    // first line of the start screen
   lcd.setCursor(0,1);               //
-  lcd.print("BARO SENSOR TEST");    // second line of the start screen
+  lcd.print(F("BARO SENSOR TEST"));    // second line of the start screen
   delay(1000);                      // 1 second delay
     for (int i = 0; i<2; i++)             // blink the LEDs at start. Supposedly for a higher purpose, really it just looks cool! =)
       {                                   //
@@ -483,10 +489,10 @@ void setup()
   lcd.clear();                      // clear screen
   delay(5);                         // give the display time to finish clearing
   lcd.setCursor(3,0);               //
-  lcd.print("def. pres.");          // label "default pressure"
+  lcd.print(F("def. pres."));          // label "default pressure"
   lcd.setCursor(3,1);               //
   lcd.print(presSea,1);             // show the start pressure in hPa
-  lcd.print(" hPa");                //
+  lcd.print(F(" hPa"));                //
   delay(2000);                      // 2 second delay
   playTone((2500),70);                // double beep at start
   beepDelay(150);                       //
@@ -512,10 +518,10 @@ void lcd_out()                                                          // scree
 if (askLanded == true)                                                  // landing question screen
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("LANDED?         ");                                      //
+    lcd.print(F("LANDED?         "));                                      //
     lcd.setCursor(0,1);                                                 //
-    if (landChoice == true) {lcd.print("  > YES     no  ");}            // YES selected
-    else                    {lcd.print("    yes   > NO  ");}            // NO selected
+    if (landChoice == true) {lcd.print(F("  > YES     no  "));}            // YES selected
+    else                    {lcd.print(F("    yes   > NO  "));}            // NO selected
     return;                                                             //
   }                                                                     //
 
@@ -530,13 +536,13 @@ if (windowCount == 0)                                                   // if th
   
 ///// SYMBOL "B" OUTPUT (for Vario) /////
   lcd.setCursor(5,0);                                                   //
-    if (Stmp==true) {lcd.print("B");}                                   // show "B" (beep) when the buzzer sounds (in case the speaker is disconnected)
-    else {lcd.print(" ");}                                              // show " " when the buzzer is silent (in case the speaker is disconnected)
+    if (Stmp==true) {lcd.print(F("B"));}                                   // show "B" (beep) when the buzzer sounds (in case the speaker is disconnected)
+    else {lcd.print(F(" "));}                                              // show " " when the buzzer is silent (in case the speaker is disconnected)
       
 ///// SYMBOL "S" OUTPUT (for Speaker) /////
   lcd.setCursor(9,0);                                                   //
-  if (beep_ON == true) {lcd.print("S");}                                // if sound is on, show SOUND symbol ("S")
-  else {lcd.print(" ");}                                                // otherwise show a blank (" ")
+  if (beep_ON == true) {lcd.print(F("S"));}                                // if sound is on, show SOUND symbol ("S")
+  else {lcd.print(F(" "));}                                                // otherwise show a blank (" ")
 
 ///// VARIO INDICATION OUTPUT (Arrows) /////
     if (vario>0.1)                                                      // if vario is positive (>0.1 to allow for sensor error), fill the up arrow
@@ -570,7 +576,7 @@ if (windowCount == 0)                                                   // if th
 
 ///// TIME OUTPUT (Min) /////
   lcd.setCursor(11,0);                                                  //
-  lcd.print("Tm");                                                      // print Tm (time, minutes)
+  lcd.print(F("Tm"));                                                      // print Tm (time, minutes)
   dtostrf(((flightMs/1000)/60),3, 0, outtime);               // convert elapsed time to a char array rounded to whole numbers
   lcd.print(outtime);                                                   // show time rounded to whole numbers
 
@@ -581,7 +587,7 @@ if (cnt==4)                                                             // ALTIT
   lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
   dtostrf(float(altitudeSEA),4, 0, outalt);                             // convert sensor.temp to a char array rounded to tenths
   lcd.print(outalt);                                                    // show temperature rounded to tenths
-  lcd.print("m");                                                       //
+  lcd.print(F("m"));                                                       //
   }                                                                     //
 
 ///// ALT ABOVE TAKE OFF POINT OUTPUT (m) /////
@@ -591,7 +597,7 @@ if (cnt==5)                                                             // ALTIT
   lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
   dtostrf(float(altitude),4, 0, outalt);                                // convert sensor.temp to a char array rounded to tenths
   lcd.print(outalt);                                                    // show temperature rounded to tenths
-  lcd.print("m");                                                       //
+  lcd.print(F("m"));                                                       //
   }                                                                     //
 
 ///// ADDITIONAL ALT OUTPUT (m) /////
@@ -601,7 +607,7 @@ if (cnt==6)                                                             // EXTRA
   lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
   dtostrf(float(altitudeAdd),4, 0, outalt);                             // convert sensor.temp to a char array rounded to tenths
   lcd.print(outalt);                                                    // show temperature rounded to tenths
-  lcd.print("m");                                                       //
+  lcd.print(F("m"));                                                       //
   }                                                                     //
 }                                                                       //
 
@@ -609,29 +615,29 @@ if (cnt==6)                                                             // EXTRA
 if (windowCount == 1)                                                                   // if the second main screen is selected
   {                                                                                     //
     lcd.setCursor(0,0);                                                                 //
-    lcd.print("Max Alt: "); lcd.write(byte(4)); lcd.print(" "+String(maxAltSea)+"m");   // title and maximum altitude above sea level
+    lcd.print(F("Max Alt: ")); lcd.write(byte(4)); lcd.print(' '); lcd.print(maxAltSea); lcd.print('m');   // title and maximum altitude above sea level
     lcd.setCursor(0,1);                                                                 //
-    lcd.write(byte(5)); lcd.print(" "+String(maxAltStt)+"m");                           // maximum altitude above take-off
+    lcd.write(byte(5)); lcd.print(' '); lcd.print(maxAltStt); lcd.print('m');                           // maximum altitude above take-off
     lcd.setCursor(9,1);                                                                 //
-    lcd.write(byte(6)); lcd.print(" "+String(maxAltAdd)+"m");                           // maximum extra altitude
+    lcd.write(byte(6)); lcd.print(' '); lcd.print(maxAltAdd); lcd.print('m');                           // maximum extra altitude
   }                                                                                     //
 
 ///// Min vario) /////
 if (windowCount == 2)                                                   // if the third main screen is selected
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("Max Var:   "); lcd.print(maxVario);                      // print maximum vario
+    lcd.print(F("Max Var:   ")); lcd.print(maxVario);                      // print maximum vario
     lcd.setCursor(0,1);                                                 //
-    lcd.print("Min Var:   "); lcd.print(minVario);                      // print minimum vario
+    lcd.print(F("Min Var:   ")); lcd.print(minVario);                      // print minimum vario
   }                                                                     //
 
 ///// Min averaged vario) /////
 if (windowCount == 3)                                                   // if the fourth screen is selected...
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("Max Avg:   "); lcd.print(maxVarioAvg);                   // show maximum averaged value
+    lcd.print(F("Max Avg:   ")); lcd.print(maxVarioAvg);                   // show maximum averaged value
     lcd.setCursor(0,1);                                                 //
-    lcd.print("Min Avg:   "); lcd.print(minVarioAvg);                   // show minimum averaged value
+    lcd.print(F("Min Avg:   ")); lcd.print(minVarioAvg);                   // show minimum averaged value
   }                                                                     //
 }                                                                       //
 }                                                                       // end of screen output
@@ -719,25 +725,25 @@ void Menu()                                                                     
   if (askSave == true)                                                            // save settings question screen
     {
       lcd.setCursor(0,0);                                                           //
-      lcd.print("Save settings?  ");                                                //
+      lcd.print(F("Save settings?  "));                                                //
       lcd.setCursor(0,1);                                                           //
-      if (saveChoice == true) {lcd.print("  > YES     no  ");}                      // YES selected
-      else                    {lcd.print("    yes   > NO  ");}                      // NO selected
+      if (saveChoice == true) {lcd.print(F("  > YES     no  "));}                      // YES selected
+      else                    {lcd.print(F("    yes   > NO  "));}                      // NO selected
       return;                                                                       //
     }
 
   if (askReset == true)                                                          // factory reset question screen
     {
       lcd.setCursor(0,0);                                                           //
-      lcd.print("Reset all?      ");                                                //
+      lcd.print(F("Reset all?      "));                                                //
       lcd.setCursor(0,1);                                                           //
-      if (resetChoice == true) {lcd.print("  > YES     no  ");}                     // YES selected
-      else                     {lcd.print("    yes   > NO  ");}                     // NO selected
+      if (resetChoice == true) {lcd.print(F("  > YES     no  "));}                     // YES selected
+      else                     {lcd.print(F("    yes   > NO  "));}                     // NO selected
       return;                                                                       //
     }
 
   lcd.setCursor(0,0);                                                             //
-  lcd.print("MENU "+String(menuCount+1)+"   ");                                   // print MENU and the page number on the top line
+  lcd.print(F("MENU ")); lcd.print(menuCount+1); lcd.print(F("   "));                                   // print MENU and the page number on the top line
     if (menuCount == 0) {SeaPresChange();}                                        // menu page 1 - sea pressure / altitude
     else if (menuCount == 1) {TresholdUP();}                                      // menu page 2 - climb threshold
     else if (menuCount == 2) {TresholdDN();}                                      // menu page 3 - sink threshold
@@ -772,7 +778,7 @@ void altToDigits(int v)             // split altitude into four digits
 
 void presToDigits(float v)          // split pressure into five characters
 {
-  presSTR = presToStr(v);           //
+  presToStr(v);           //
   s0 = presSTR[0];                  //
   s1 = presSTR[1];                  //
   s2 = presSTR[2];                  //
@@ -797,23 +803,23 @@ void SeaPresChange()                                                            
               if (symCount == 5) {s4 = nextDigit(s4);}                            //
               B3Pres = false;                                                     //
             }
-          presSTR = (String)s0+s1+s2+s3+"."+s4;                                   // build the pressure string
-          presTMP = presSTR.toFloat();                                            //
+          presSTR[0] = s0; presSTR[1] = s1; presSTR[2] = s2; presSTR[3] = s3; presSTR[4] = '.'; presSTR[5] = s4; presSTR[6] = 0;                                   // build the pressure string
+          presTMP = atof(presSTR);                                            //
           presSea = presTMP;                                                      // apply immediately - altitude updates instantly
           lcd.setCursor(10,0);                                                    //
-          lcd.print("     ");                                                     // erase the old cursor
+          lcd.print(F("     "));                                                     // erase the old cursor
           lcd.setCursor((10+symCount),0);                                         //
-          lcd.print("v");                                                         // draw the cursor over the selected digit
+          lcd.print(F("v"));                                                         // draw the cursor over the selected digit
         }
       else                                                                        // if not editing - show current pressure
         {
           presToDigits(presSea);                                                  // refresh digits from presSea (may have changed via altitude)
           presTMP = presSea;                                                      //
           lcd.setCursor(10,0);                                                    //
-          lcd.print("      ");                                                    // erase the cursor
+          lcd.print(F("      "));                                                    // erase the cursor
         }
       lcd.setCursor(0,1);                                                         //
-      lcd.print("Sea pres. ");                                                    // draw "Sea pres."
+      lcd.print(F("Sea pres. "));                                                    // draw "Sea pres."
       lcd.setCursor(10,1);                                                        //
       lcd.print(presSTR);                                                         // show pressure in hPa
     }
@@ -829,27 +835,27 @@ void SeaPresChange()                                                            
               if (symCount == 3) {t3 = nextDigit(t3);}                            //
               B3Alt = false;                                                      //
             }
-          altSTR = (String)t0+t1+t2+t3;                                           // build the altitude string
-          altSet = altSTR.toInt();                                                //
+          put4(altSTR, t0, t1, t2, t3);                                           // build the altitude string
+          altSet = atoi(altSTR);                                                //
           presSea = (sensor.pres*MMHG_TO_HPA)*exp(float(altSet)/(29.21*(sensor.temp+273.15)));   // calculate pressure from altitude immediately
           presToDigits(presSea);                                                  // and refresh the pressure digits
           presTMP = presSea;                                                      //
           lcd.setCursor(11,0);                                                    //
-          lcd.print("    ");                                                      // erase the old cursor
+          lcd.print(F("    "));                                                      // erase the old cursor
           lcd.setCursor((11+symCount),0);                                         //
-          lcd.print("v");                                                         // draw the cursor over the selected digit
+          lcd.print(F("v"));                                                         // draw the cursor over the selected digit
         }
       else                                                                        // if not editing - show current altitude
         {
           altToDigits(altitudeSEA);                                               //
-          altSTR = (String)t0+t1+t2+t3;                                           //
+          put4(altSTR, t0, t1, t2, t3);                                           //
           lcd.setCursor(11,0);                                                    //
-          lcd.print("     ");                                                     // erase the cursor
+          lcd.print(F("     "));                                                     // erase the cursor
         }
       lcd.setCursor(0,1);                                                         //
-      lcd.print("Set alt.   ");                                                   // draw "Set alt."
+      lcd.print(F("Set alt.   "));                                                   // draw "Set alt."
       lcd.setCursor(11,1);                                                        //
-      lcd.print(altSTR+"m");                                                      // show altitude in metres
+      lcd.print(altSTR); lcd.print('m');                                                      // show altitude in metres
     }
 }
 
@@ -857,8 +863,8 @@ void SeaPresChange()                                                            
 void TresholdUP()                                                                 //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Tr.hold UP ");                                                       // draw "Tr.hold UP "
-  lcd.print("     ");                                                             // erase old characters
+  lcd.print(F("Tr.hold UP "));                                                       // draw "Tr.hold UP "
+  lcd.print(F("     "));                                                             // erase old characters
     if (TresUPchange == true)                                                     // if button 3 was pressed...
       {                                                                           //
         vario_up = treshUP[TrUPcount];                                            // set vario_up (used for the climb sound) to the next value from the array
@@ -866,15 +872,15 @@ void TresholdUP()                                                               
       }                                                                           // 
   lcd.setCursor(12,1);                                                            // 
   dtostrf(vario_up, 4, 1, outTrUP);                                               // convert vario_up from float to a char array for the screen
-  lcd.print(String(outTrUP));                                                     // show the climb threshold
+  lcd.print(outTrUP);                                                     // show the climb threshold
 }                                                                                 //
 
 ///// SETTING TRESHOLD FOR DESCENT /////
 void TresholdDN()                                                                 // 
 {                                                                                 // 
   lcd.setCursor(0,1);                                                             // 
-  lcd.print("Tr.hold DN ");                                                       // draw "Tr.hold DN "
-  lcd.print("     ");                                                             // erase old characters
+  lcd.print(F("Tr.hold DN "));                                                       // draw "Tr.hold DN "
+  lcd.print(F("     "));                                                             // erase old characters
     if (TresDNchange == true)                                                     // if button 3 was pressed...
       {                                                                           //
         vario_down = treshDN[TrDNcount];                                          // set vario_down (used for the sink sound) to the next value from the array
@@ -882,17 +888,17 @@ void TresholdDN()                                                               
       }                                                                           // 
   lcd.setCursor(12,1);                                                            // 
   dtostrf(vario_down, 4, 1, outTrDN);                                             // convert vario_down from float to a char array for the screen
-  lcd.print(String(outTrDN));                                                     // show the sink threshold
+  lcd.print(outTrDN);                                                     // show the sink threshold
 }                                                                                 //
 
 ///// OFF /////
 void LED_light()                                                                  //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Light      ");                                                       // draw "Light"
+  lcd.print(F("Light      "));                                                       // draw "Light"
   lcd.setCursor(13,1);                                                            //
-    if (LED_ON == true) {lcd.print("ON ");}                                       // if LEDs are on, show ON
-    else {lcd.print("OFF");}                                                      // if off, show OFF
+    if (LED_ON == true) {lcd.print(F("ON "));}                                       // if LEDs are on, show ON
+    else {lcd.print(F("OFF"));}                                                      // if off, show OFF
 }                                                                                 //
 
 ///// VARIO MODE SET /////
@@ -900,17 +906,17 @@ void LED_light()                                                                
 void AutoStartSet()                                                               //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Auto start ");                                                       // draw "Auto start"
+  lcd.print(F("Auto start "));                                                       // draw "Auto start"
   lcd.setCursor(12,1);                                                            //
-  if (AutoStart == true) {lcd.print("  ON");}                                     //
-  else {lcd.print(" OFF");}                                                       //
+  if (AutoStart == true) {lcd.print(F("  ON"));}                                     //
+  else {lcd.print(F(" OFF"));}                                                       //
 }                                                                                 //
 
 ///// FACTORY RESET PAGE /////
 void FactoryResetPage()                                                           //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Factory reset   ");                                                  // button 3 asks "Reset all?"
+  lcd.print(F("Factory reset   "));                                                  // button 3 asks "Reset all?"
 }                                                                                 //
 
 void factoryReset()                 // all settings back to default, saved straight away
@@ -921,7 +927,7 @@ void factoryReset()                 // all settings back to default, saved strai
   LED_ON = false; button_beep_ON = true; AutoStart = true;
   presSea = 1013.25;                // standard pressure
   presTMP = presSea;                //
-  presSTR = presToStr(presSea);     //
+  presToStr(presSea);     //
   applySettings();                  //
   avgFill = 0;                      //
   saveSettings();                   // write to memory
@@ -940,22 +946,22 @@ int freeRam()                       // free RAM in bytes
 void InfoPage()                                                                   // button 3 shows the next item
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  if (infoCount == 0) {lcd.print("Version   "); lcd.print(FW_VERSION); lcd.print("   ");}
-  else if (infoCount == 1) {lcd.print("Temp     "); lcd.print(sensor.temp,1); lcd.print("C  ");}
-  else if (infoCount == 2) {lcd.print("Loop      "); lcd.print((int)loopMs); lcd.print("ms  ");}
-  else {lcd.print("Free RAM  "); lcd.print(freeRam()); lcd.print("B  ");}
+  if (infoCount == 0) {lcd.print(F("Version   ")); lcd.print(FW_VERSION); lcd.print(F("   "));}
+  else if (infoCount == 1) {lcd.print(F("Temp     ")); lcd.print(sensor.temp,1); lcd.print(F("C  "));}
+  else if (infoCount == 2) {lcd.print(F("Loop      ")); lcd.print((int)loopMs); lcd.print(F("ms  "));}
+  else {lcd.print(F("Free RAM  ")); lcd.print(freeRam()); lcd.print(F("B  "));}
 }                                                                                 //
 
 ///// AVERAGING TIME /////
 void AvgTime()                                                                    //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Average    ");                                                       // draw "Average"
+  lcd.print(F("Average    "));                                                       // draw "Average"
   lcd.setCursor(12,1);                                                            //
-  if (avgSec[AvgCount] < 10) {lcd.print("  ");}                                   //
-  else {lcd.print(" ");}                                                          //
+  if (avgSec[AvgCount] < 10) {lcd.print(F("  "));}                                   //
+  else {lcd.print(F(" "));}                                                          //
   lcd.print(avgSec[AvgCount]);                                                    // show the averaging time
-  lcd.print("s");                                                                 //
+  lcd.print(F("s"));                                                                 //
 }                                                                                 //
 
 ///// BUZZER VOLUME /////
@@ -964,15 +970,15 @@ void VolumeSet()                                                                
   if (freqMode == false)                                                          // ===== "VOLUME" VIEW =====
     {
       lcd.setCursor(0,1);                                                         //
-      lcd.print("Volume      ");                                                  //
+      lcd.print(F("Volume      "));                                                  //
       lcd.setCursor(12,1);                                                        //
-      if (volCount == 0) {lcd.print(" OFF");}                                     //
-      else if (volCount == 1) {lcd.print(" LOW");}                                //
-      else if (volCount == 2) {lcd.print(" MED");}                                //
-      else {lcd.print(" MAX");}                                                   //
+      if (volCount == 0) {lcd.print(F(" OFF"));}                                     //
+      else if (volCount == 1) {lcd.print(F(" LOW"));}                                //
+      else if (volCount == 2) {lcd.print(F(" MED"));}                                //
+      else {lcd.print(F(" MAX"));}                                                   //
       lcd.setCursor(10,0);                                                        //
-      if (volEdit == true) {lcd.print("    v ");}                                 // cursor over the value
-      else {lcd.print("      ");}                                                 //
+      if (volEdit == true) {lcd.print(F("    v "));}                                 // cursor over the value
+      else {lcd.print(F("      "));}                                                 //
     }
   else                                                                            // ===== "BASE FREQUENCY" VIEW =====
     {
@@ -986,22 +992,22 @@ void VolumeSet()                                                                
               if (symCount == 3) {f3 = nextDigit(f3);}                            //
               B3Freq = false;                                                     //
             }
-          freqSTR = (String)f0+f1+f2+f3;                                          //
+          put4(freqSTR, f0, f1, f2, f3);                                          //
           lcd.setCursor(10,0);                                                    //
-          lcd.print("      ");                                                    // erase the old cursor
+          lcd.print(F("      "));                                                    // erase the old cursor
           lcd.setCursor((10+symCount),0);                                         //
-          lcd.print("v");                                                         // cursor over the selected digit
+          lcd.print(F("v"));                                                         // cursor over the selected digit
         }
       else                                                                        //
         {
           freqToDigits(baseFreq);                                                 //
           lcd.setCursor(10,0);                                                    //
-          lcd.print("      ");                                                    //
+          lcd.print(F("      "));                                                    //
         }
       lcd.setCursor(0,1);                                                         //
-      lcd.print("Base freq ");                                                    //
+      lcd.print(F("Base freq "));                                                    //
       lcd.setCursor(10,1);                                                        //
-      lcd.print(freqSTR+"Hz");                                                    // show the frequency
+      lcd.print(freqSTR); lcd.print(F("Hz"));                                                    // show the frequency
     }
 }                                                                                 //
 
@@ -1011,7 +1017,7 @@ void freqToDigits(unsigned int v)   // split the frequency into four digits
   f1 = char(48+(v/100)%10);         //
   f2 = char(48+(v/10)%10);          //
   f3 = char(48+v%10);               //
-  freqSTR = (String)f0+f1+f2+f3;    //
+  put4(freqSTR, f0, f1, f2, f3);    //
 }
 
 ///// VARIO MODE SET /////
@@ -1019,23 +1025,23 @@ void freqToDigits(unsigned int v)   // split the frequency into four digits
 void Response()                                                                   //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Resp ");                                                             // draw "Resp"
+  lcd.print(F("Resp "));                                                             // draw "Resp"
   lcd.print(RespCount+1);                                                         // show level 1...5
   lcd.setCursor(10,1);                                                            //
   float win = samples * loopMs / 1000.0;                                          // averaging window = points x loop time, seconds
-  if (win < 10) {lcd.print(" ");}                                                 //
+  if (win < 10) {lcd.print(F(" "));}                                                 //
   lcd.print(win,1);                                                               // show the window in seconds
-  lcd.print("s ");                                                                //
+  lcd.print(F("s "));                                                                //
 }                                                                                 //
 
 ///// OFF /////
 void ButtonBeep()                                                                 //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("But. sound ");                                                       // draw "Button sound"
+  lcd.print(F("But. sound "));                                                       // draw "Button sound"
   lcd.setCursor(13,1);                                                            //
-  if (button_beep_ON == true) {lcd.print("ON ");}                                 // if sound is on, show ON
-  else {lcd.print("OFF");}                                                        // if off, show OFF
+  if (button_beep_ON == true) {lcd.print(F("ON "));}                                 // if sound is on, show ON
+  else {lcd.print(F("OFF"));}                                                        // if off, show OFF
 }                                                                                 //
 
 ///// MAIN CYCLE /////
@@ -1103,7 +1109,7 @@ if (Buttom1.click())                                                            
     else if (MainMenu == false)                                                           // ... and if we are not in the MENU ...
       {                                                                                   //
         lcd.setCursor(13,0);                                                              // RESET TIME with a long press of BUTTON 1
-        lcd.print("   ");                                                                 // erase the old time value
+        lcd.print(F("   "));                                                                 // erase the old time value
         timeZero = millis();                                                              // set the variable used to reset the time
         flightMs = 0;                                                                     // reset the flight timer display
       }                                                                                   // 
@@ -1190,7 +1196,7 @@ if (Buttom2.click())                                                            
           {                                                                               //
             altSEATmp = altitudeSEA;                                                      // set altSEATmp to the calculated altitude
             presSea = sensor.pres*MMHG_TO_HPA;   // pressure mmHg -> hPa
-            presSTR = presToStr(presSea);                                                    // print the pressure into the string shown in the MENU
+            presToStr(presSea);                                                    // print the pressure into the string shown in the MENU
             saveSettings();                                                               // save pressure to memory
           }                                                                               //
         if (cnt == 5)                                                                     // action for TAKE-OFF altitude (zeroing)
@@ -1224,7 +1230,7 @@ if (Buttom2.click())                                                            
                 else                                                                      //
                   {                                                                       //
                     freqEdit = false;                                                     // finish entering
-                    int v = freqSTR.toInt();                                              //
+                    int v = atoi(freqSTR);                                              //
                     if (v < FREQ_MIN) {v = FREQ_MIN;}                                     // limit the range
                     if (v > FREQ_MAX) {v = FREQ_MAX;}                                     //
                     baseFreq = v;                                                         //
@@ -1600,7 +1606,7 @@ rLEDtmp = false;                                                        // turn 
 else                                                                    //
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("Sensor error");                                          // error message if there is no data from the sensor
+    lcd.print(F("Sensor error"));                                          // error message if there is no data from the sensor
   }                                                                     //
 
 //Serial.println((String)" samples="+samples+" maxsamples="+maxsamples);
