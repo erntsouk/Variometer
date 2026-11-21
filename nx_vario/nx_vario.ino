@@ -115,6 +115,10 @@ boolean rLEDtmp = false;            // red LED on/off
 boolean MainMenu = false;           // are we in the menu
 boolean askSave = false;            // is the "save settings?" screen shown
 boolean saveChoice = true;          // selected answer to that question (YES/NO)
+boolean askReset = false;           // is the "Reset all?" question shown
+boolean resetChoice = false;        // selected answer (default NO)
+byte infoCount = 0;                 // which item the info page shows
+#define FW_VERSION "v28"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -399,6 +403,7 @@ void flightDetect()                 // called once per second
 void exitMenu()
 {
   askSave = false;                    // remove the question screen
+  askReset = false;                   // and the reset question
   altChange = false;                  // turn off altitude entry
   volEdit = false;                    // turn off volume setting
   freqEdit = false;                   // and frequency entry
@@ -719,6 +724,16 @@ void Menu()                                                                     
       return;                                                                       //
     }
 
+  if (askReset == true)                                                          // factory reset question screen
+    {
+      lcd.setCursor(0,0);                                                           //
+      lcd.print("Reset all?      ");                                                //
+      lcd.setCursor(0,1);                                                           //
+      if (resetChoice == true) {lcd.print("  > YES     no  ");}                     // YES selected
+      else                     {lcd.print("    yes   > NO  ");}                     // NO selected
+      return;                                                                       //
+    }
+
   lcd.setCursor(0,0);                                                             //
   lcd.print("MENU "+String(menuCount+1)+"   ");                                   // print MENU and the page number on the top line
     if (menuCount == 0) {SeaPresChange();}                                        // menu page 1 - sea pressure / altitude
@@ -730,6 +745,8 @@ void Menu()                                                                     
     else if (menuCount == 6) {Response();}                                        // menu page 7 - vario response speed
     else if (menuCount == 7) {AvgTime();}                                         // menu page 8 - averaging time
     else if (menuCount == 8) {AutoStartSet();}                                     // menu page 9 - auto take-off detection
+    else if (menuCount == 9) {FactoryResetPage();}                                // menu page 10 - factory reset
+    else if (menuCount == 10) {InfoPage();}                                       // menu page 11 - info
 }                                                                                 //
 
 ///// SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -887,6 +904,47 @@ void AutoStartSet()                                                             
   else {lcd.print(" OFF");}                                                       //
 }                                                                                 //
 
+///// FACTORY RESET PAGE /////
+void FactoryResetPage()                                                           //
+{                                                                                 //
+  lcd.setCursor(0,1);                                                             //
+  lcd.print("Factory reset   ");                                                  // button 3 asks "Reset all?"
+}                                                                                 //
+
+void factoryReset()                 // all settings back to default, saved straight away
+{
+  TrUPcount = 0; TrDNcount = 3;     // thresholds
+  volCount = 3; baseFreq = 600;     // sound
+  AvgCount = 1; RespCount = 3;      // averaging and response
+  LED_ON = false; button_beep_ON = true; AutoStart = true;
+  presSea = 1013.25;                // standard pressure
+  presTMP = presSea;                //
+  presSTR = presToStr(presSea);     //
+  applySettings();                  //
+  avgFill = 0;                      //
+  saveSettings();                   // write to memory
+  backupSettings();                 // so the exit question cannot undo it
+  SSL_beep();                       // confirmation beep
+}
+
+///// INFO PAGE /////
+extern int __heap_start, *__brkval; // used to measure free RAM
+int freeRam()                       // free RAM in bytes
+{
+  int v;                            //
+  return (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+}
+
+void InfoPage()                                                                   // button 3 shows the next item
+{                                                                                 //
+  lcd.setCursor(0,1);                                                             //
+  if (infoCount == 0) {lcd.print("Version   "); lcd.print(FW_VERSION); lcd.print("   ");}
+  else if (infoCount == 1) {lcd.print("Temp     "); lcd.print(sensor.temp,1); lcd.print("C  ");}
+  else if (infoCount == 2) {lcd.print("Loop      "); lcd.print((int)loopMs); lcd.print("ms  ");}
+  else if (infoCount == 3) {lcd.print("Free RAM  "); lcd.print(freeRam()); lcd.print("B  ");}
+  else {lcd.print("Pres "); lcd.print(sensor.pres*MMHG_TO_HPA,1); lcd.print("hPa ");}
+}                                                                                 //
+
 ///// AVERAGING TIME /////
 void AvgTime()                                                                    //
 {                                                                                 //
@@ -1016,6 +1074,12 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
       }                                                                                   //
     else                                                                                  // ... if we are already in the menu
       {
+        if (askReset == true)                                                             // if the reset question is shown...
+          {
+            if (resetChoice == true) {resetChoice = false;}                               // toggle YES/NO
+            else {resetChoice = true;}                                                    //
+          }
+        else
         if (askSave == true)                                                              // if the save question is shown...
           {
             if (saveChoice == true) {saveChoice = false;}                                 // ... toggle YES/NO
@@ -1023,7 +1087,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
           }
         else if ((presChange == false) && (altChange == false) && (volEdit == false) && (freqEdit == false))                           // otherwise go BACK one menu page
           {
-            if (menuCount == 0) {menuCount = 9;}                                          // from the first page go to the last
+            if (menuCount == 0) {menuCount = 11;}                                          // from the first page go to the last
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
@@ -1044,7 +1108,7 @@ if (Buttom1.click())                                                            
       }                                                                                   // 
     else                                                                                  // ... if we are in the menu
       {
-        if (askSave == false)                                                             // ask whether to save settings
+        if ((askSave == false) && (askReset == false))                                                             // ask whether to save settings
           {
             askSave = true;                                                               // show the question screen
             saveChoice = true;                                                            // default - YES
@@ -1077,6 +1141,11 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
               }                                                                           //
           }                                                                               //
       }                                                                                   //
+    else if (askReset == true)                                                        // if the reset question is shown...
+      {
+        if (resetChoice == true) {resetChoice = false;}                               // toggle YES/NO
+        else {resetChoice = true;}                                                    //
+      }
     else if (askSave == true)                                                         // if the save question is shown...
       {
         if (saveChoice == true) {saveChoice = false;}                                 // toggle YES/NO
@@ -1104,7 +1173,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // otherwise go to the next menu page
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 9) {menuCount = 0;}                                         // after the last page - back to the first
+            if (menuCount == 11) {menuCount = 0;}                                         // after the last page - back to the first
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
@@ -1133,7 +1202,7 @@ if (Buttom2.click())                                                            
           }                                                                               //
         AltDifTmpFlag = true;                                                             // set the flag: altitude was reset
       }                                                                                   //
-    else if (askSave == false)                                                                                  // ... if we are in the MENU after all ...
+    else if ((askSave == false) && (askReset == false))                                                                                  // ... if we are in the MENU after all ...
       {                                                                                   //
         if (menuCount == 5)                                                               // on the volume / base frequency page
           {                                                                               //
@@ -1230,6 +1299,12 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
           {windowCount = 0;}                                                              // ... reset it
         lcd.clear();                                                                      // clear the screen on every switch
       }                                                                                   // 
+    else if (askReset == true)                                                        // if the reset question is shown...
+      {
+        if (resetChoice == true) {factoryReset();}                                    // YES - back to factory settings
+        askReset = false;                                                             // NO - just close the question
+        lcd.clear();                                                                  //
+      }
     else if (askSave == true)                                                         // if the save question is shown...
       {
         exitMenu();                                                               // ... apply the answer and leave the menu
@@ -1312,6 +1387,18 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             quietTime = 0;                                                                //
             groundInit = false;                                                           //
           }                                                                               //
+        if (menuCount == 9)                                                               // ...if we are on the factory reset page
+          {                                                                               //
+            askReset = true;                                                              // ask first
+            resetChoice = false;                                                          // default - NO, for safety
+            lcd.clear();                                                                  //
+          }                                                                               //
+        if (menuCount == 10)                                                              // ...if we are on the info page
+          {                                                                               //
+            infoCount++;                                                                  // next info item
+            if (infoCount == 5) {infoCount = 0;}                                          //
+            lcd.clear();                                                                  //
+          }                                                                               //
       }                                                                                   //
   }                                                                                       //
 
@@ -1348,7 +1435,7 @@ if (Buttom3.click())                                                            
             minVarioAvg = 0;                                                              //
           }                                                                               //
       }                                                                                   //
-    else if (askSave == false)                                                                                  // ... if we are in the MENU after all...
+    else if ((askSave == false) && (askReset == false))                                                                                  // ... if we are in the MENU after all...
       {                                                                                   // long press of BUTTON 3 in the MENU resets parameters to default
         presSea = 1013.25;                                                                 // the altitude formula variable gets its start value
         presTMP = 1013.25;                                                                 // the temporary pressure variable gets its start value
