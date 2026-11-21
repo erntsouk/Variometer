@@ -1,13 +1,13 @@
-// ВНИМАНИЕ!!! Значения строк, в комментариях к которым написано "МОЖНО МЕНЯТЬ!!!" действительно можно менять. В случае неясности в логике работы, обращаться к автору кода: xonix2004@list.ru
+// NOTE!!! Lines whose comment says "CAN BE CHANGED!!!" really can be changed. If the logic is unclear, contact the original code author: xonix2004@list.ru
 
-#include <BMP180.h>                 // подключение библиотеки датчика bmp180, описание здесь (http://blog.iarduino.ru/page/novaya-biblioteka-dlya-d..) 
-#include <Wire.h>                   // подключение библиотеки для работы с I2C 
-#include <EEPROM.h>                // память для хранения настроек
-#include <Waveshare_LCD1602.h>      // драйвер встроенного I2C дисплея Waveshare
-#include <Bounce2.h>                // подключение библиотеки для избежания дребезга контактов клавиш 
-#include <SBB_CLICK.h>              // подключение библиотеки удержания кнопки
-#include <math.h>                   // подключение библиотеки для работы с математическими функциями (в данном случае с логарифмом для вычисления высоты на уровне моря)
-#define MMHG_TO_HPA 1.33322         // датчик отдаёт давление в мм рт. ст.; переводим в hPa
+#include <BMP180.h>                 // bmp180 sensor library, description here (http://blog.iarduino.ru/page/novaya-biblioteka-dlya-d..)
+#include <Wire.h>                   // I2C library
+#include <EEPROM.h>                // memory for storing settings
+#include <Waveshare_LCD1602.h>      // driver for the Waveshare I2C display
+#include <Bounce2.h>                // library to debounce the buttons
+#include <SBB_CLICK.h>              // library for button hold (long press)
+#include <math.h>                   // math library (here for the logarithm used to calculate altitude above sea level)
+#define MMHG_TO_HPA 1.33322         // the sensor gives pressure in mmHg; convert to hPa
 BMP180 sensor;                      // 
 class VarioLCD : public Waveshare_LCD1602, public Print {
 public:
@@ -17,149 +17,149 @@ public:
 };
 
 VarioLCD lcd(16, 2);
-#define switchPin1 5                // пин кнопки 1
-#define switchPin2 4                // пин кнопки 2
-#define switchPin3 6                // пин кнопки 3
-#define p 3                         // пин пищалки
-#define gLED 7                      // пин ЗЕЛЕНОГО диода
-#define rLED 8                      // пин КРАСНОГО диода
+#define switchPin1 5                // button 1 pin
+#define switchPin2 4                // button 2 pin
+#define switchPin3 6                // button 3 pin
+#define p 3                         // buzzer pin
+#define gLED 7                      // GREEN LED pin
+#define rLED 8                      // RED LED pin
 
-Bounce b1 = Bounce();               // создаём объект Bounce 1 (для удаления дребезга кнопок)
-Bounce b2 = Bounce();               // создаём объект Bounce 2 (для удаления дребезга кнопок)
-Bounce b3 = Bounce();               // создаём объект Bounce 3 (для удаления дребезга кнопок)
+Bounce b1 = Bounce();               // create Bounce object 1 (button debouncing)
+Bounce b2 = Bounce();               // create Bounce object 2 (button debouncing)
+Bounce b3 = Bounce();               // create Bounce object 3 (button debouncing)
 
-SBB_CLICK Buttom1(5,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 1, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
-SBB_CLICK Buttom2(4,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 2, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
-SBB_CLICK Buttom3(6,1);             // создаём экземпляр класса и в параметрах указываем (номер пина кнопки 3, количество секунд нажатия кнопки) - для обнаружения длительного нажатия
+SBB_CLICK Buttom1(5,1);             // create the object with (button 1 pin, seconds to hold) - for long press detection
+SBB_CLICK Buttom2(4,1);             // create the object with (button 2 pin, seconds to hold) - for long press detection
+SBB_CLICK Buttom3(6,1);             // create the object with (button 3 pin, seconds to hold) - for long press detection
 
-float vario_down = -1.1;            // Установка порогового значения СНИЖЕНИЯ для запуска пищалки         - МОЖНО МЕНЯТЬ только в паре с TrDNcount, значения брать из массива treshDN!!!
-float vario_up = 0.1;               // Установка порогового значения ПОДЪЁМА для запуска пищалки          - МОЖНО МЕНЯТЬ только в паре с TrUPcount, значения брать из массива treshUP!!!
-float beep;                         // переменная для вывода звука при работе вариометра                  
-float Beep_period;                  // переменная для вывода звука при работе вариометра                  
-float vario = 0;                    // переменная вариометра                                              
-float varioAvg = 0;                 // усреднённое значение вариометра для экрана
-float avgAlt[31];                   // снимки высоты раз в секунду (хватает на 30 секунд)
-byte avgIdx = 0;                    // позиция в кольцевом буфере
-byte avgFill = 0;                   // сколько снимков уже накоплено
-unsigned long avgTime = 0;          // время последнего снимка
-byte AvgCount = 1;                  // выбранное время усреднения (индекс в avgSec)
-const byte avgSec[5] = {5, 10, 15, 20, 30};   // МОЖНО МЕНЯТЬ!!! варианты времени усреднения, сек
-float maxVario = 0;                 // переменная максимального значения вариометра                       
-float minVario = 0;                 // переменная минимального значения вариометра                        
-float maxVarioAvg = 0;              // максимальное усреднённое значение вариометра
-float minVarioAvg = 0;              // минимальное усреднённое значение вариометра
-float presSea = 1013.25;            // давление на уровне моря в hPa (DEFAULT=1013.25)   - МОЖНО МЕНЯТЬ!!!
-float presTMP = 0;                  // переменная для работы процедуры ручного ввода давления
-float tempo = millis();             // описание переменной tempo типа float и присвоение ей значения функции millis() - отсчитывает время от начала работы программы в миллисекундах
-float N1 = 0;                       // переменная для работы усреднителя                                 
-float N2 = 0;                       // переменная для работы усреднителя                                 
-float N3 = 0;                       // переменная для работы усреднителя                                 
-float D1 = 0;                       // переменная для работы усреднителя                                 
-float D2 = 0;                       // переменная для работы усреднителя                                 
+float vario_down = -1.1;            // SINK threshold for the buzzer         - CAN BE CHANGED only together with TrDNcount, take values from the treshDN array!!!
+float vario_up = 0.1;               // CLIMB threshold for the buzzer          - CAN BE CHANGED only together with TrUPcount, take values from the treshUP array!!!
+float beep;                         // variable for vario sound output
+float Beep_period;                  // variable for vario sound output
+float vario = 0;                    // vario value
+float varioAvg = 0;                 // averaged vario value for the screen
+float avgAlt[31];                   // altitude snapshots once per second (enough for 30 seconds)
+byte avgIdx = 0;                    // position in the ring buffer
+byte avgFill = 0;                   // how many snapshots have been collected
+unsigned long avgTime = 0;          // time of the last snapshot
+byte AvgCount = 1;                  // selected averaging time (index into avgSec)
+const byte avgSec[5] = {5, 10, 15, 20, 30};   // CAN BE CHANGED!!! averaging time options, seconds
+float maxVario = 0;                 // maximum vario value
+float minVario = 0;                 // minimum vario value
+float maxVarioAvg = 0;              // maximum averaged vario value
+float minVarioAvg = 0;              // minimum averaged vario value
+float presSea = 1013.25;            // sea level pressure in hPa (DEFAULT=1013.25)   - CAN BE CHANGED!!!
+float presTMP = 0;                  // variable for manual pressure entry
+float tempo = millis();             // tempo (float) = millis() - counts time since start in milliseconds
+float N1 = 0;                       // variable for the averager
+float N2 = 0;                       // variable for the averager
+float N3 = 0;                       // variable for the averager
+float D1 = 0;                       // variable for the averager
+float D2 = 0;                       // variable for the averager
 
-float alt[51];                                                          // Массив alt переменных типа float (для работы усреднителя), начальная размерность 51, моя 41
-float tim[51];                                                          // Массив tim переменных типа float (для работы усреднителя), начальная размерность 51, моя 41 
-float treshUP[5] = {0.1, 0.4, 0.5, 0.6, 0.7};                           // Массив, содержащий значения срабатывания вариометра при подъёме                       - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_up и TrUPcount
-float treshDN[5] = {-0.5, -0.7, -0.9, -1.1, -1.3};                      // Массив, содержащий значения срабатывания вариометра при спуске                        - МОЖНО МЕНЯТЬ!!! зависимые переменные: vario_down и TrDNcount
+float alt[51];                                                          // array alt (float) for the averager, original size 51, mine 41
+float tim[51];                                                          // array tim (float) for the averager, original size 51, mine 41
+float treshUP[5] = {0.1, 0.4, 0.5, 0.6, 0.7};                           // climb thresholds                       - CAN BE CHANGED!!! related variables: vario_up and TrUPcount
+float treshDN[5] = {-0.5, -0.7, -0.9, -1.1, -1.3};                      // sink thresholds                        - CAN BE CHANGED!!! related variables: vario_down and TrDNcount
 
 
-int altTmp = 0;                     // переменная для вычисления высоты при обнулении КНОПКОЙ 1 (высота = высота с датчика - сохранённая высота в данной точке (altTmp))
-int altTmpAdd = 0;                  // переменная для вычисления дополнительной высоты при обнулении КНОПКОЙ 1 (высота = высота с датчика - сохранённая высота в данной точке (altTmpAdd))
-int altSEATmp = 0;                  // переменная для вычисления высоты, необходимой при обнулении максимального значения в ГЛАВНОМ ЭКРАНЕ 2
-int altSEATmpZero = 0;              // переменная, необходимая при расчёте высоты над морем
-int altitude = 0;                   // переменная высоты
-int altitudeAdd = 0;                // переменная дополнительной высоты
-int altitudeSEA = 0;                // переменная высоты над уровнем моря
-int altdif = 0;                     // разница между высотой над стартом и высотой по давлению
-int maxAltSea = 0;                  // максимальная высота над морем
-int maxAltStt = 0;                  // максимальная высота над стартом
-int maxAltAdd = 0;                  // максимальная высота дополнительная
+int altTmp = 0;                     // altitude when zeroed with BUTTON 1 (altitude = sensor altitude - altitude saved at that point (altTmp))
+int altTmpAdd = 0;                  // extra altitude when zeroed with BUTTON 1 (altitude = sensor altitude - altitude saved at that point (altTmpAdd))
+int altSEATmp = 0;                  // altitude needed when resetting the maximum on MAIN SCREEN 2
+int altSEATmpZero = 0;              // variable needed for altitude above sea level
+int altitude = 0;                   // altitude
+int altitudeAdd = 0;                // extra altitude
+int altitudeSEA = 0;                // altitude above sea level
+int altdif = 0;                     // difference between altitude above take-off and pressure altitude
+int maxAltSea = 0;                  // maximum altitude above sea level
+int maxAltStt = 0;                  // maximum altitude above take-off
+int maxAltAdd = 0;                  // maximum extra altitude
 
-char s0 = '1';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s1 = '0';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s2 = '1';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s3 = '3';                      // символ в значении давления по морю (используется для работы при вводе значения)
-char s4 = '2';                      // символ в значении давления по морю (используется для работы при вводе значения)
+char s0 = '1';                      // digit of the sea level pressure (used while entering the value)
+char s1 = '0';                      // digit of the sea level pressure (used while entering the value)
+char s2 = '1';                      // digit of the sea level pressure (used while entering the value)
+char s3 = '3';                      // digit of the sea level pressure (used while entering the value)
+char s4 = '2';                      // digit of the sea level pressure (used while entering the value)
 
-String presSTR;                     // строка используется в процедуре ручного ввода давления
-char t0 = '0';                      // символы в значении высоты (для меню установки высоты)
+String presSTR;                     // string used for manual pressure entry
+char t0 = '0';                      // altitude digits (for the altitude setting)
 char t1 = '0';                      //
 char t2 = '0';                      //
 char t3 = '0';                      //
-String altSTR;                      // строка редактируемой высоты
-int altSet = 0;                     // введённая высота в метрах
-boolean altChange = false;          // включение/выключение режима ввода высоты
-#define FREQ_MIN 500                // МОЖНО МЕНЯТЬ!!! самая низкая базовая частота, Гц
-#define FREQ_MAX 1200               // МОЖНО МЕНЯТЬ!!! самая высокая базовая частота, Гц
-unsigned int baseFreq = 600;        // базовая частота звука вариометра, Гц
-boolean freqMode = false;           // вид страницы громкости: false - громкость, true - базовая частота
-boolean volEdit = false;            // идёт настройка громкости
-boolean freqEdit = false;           // идёт ввод базовой частоты
-boolean B3Freq = false;             // нажата кнопка 3 при вводе частоты
-char f0 = '0';                      // цифры базовой частоты
+String altSTR;                      // altitude string being edited
+int altSet = 0;                     // entered altitude in metres
+boolean altChange = false;          // altitude entry mode on/off
+#define FREQ_MIN 500                // CAN BE CHANGED!!! lowest base frequency, Hz
+#define FREQ_MAX 1200               // CAN BE CHANGED!!! highest base frequency, Hz
+unsigned int baseFreq = 600;        // vario base sound frequency, Hz
+boolean freqMode = false;           // volume page view: false - volume, true - base frequency
+boolean volEdit = false;            // volume is being set
+boolean freqEdit = false;           // base frequency is being entered
+boolean B3Freq = false;             // button 3 pressed while entering frequency
+char f0 = '0';                      // base frequency digits
 char f1 = '6';                      //
 char f2 = '0';                      //
 char f3 = '0';                      //
-String freqSTR = "0600";            // строка базовой частоты
-boolean altMode = false;            // false - задаём давление в hPa, true - задаём высоту в метрах
-boolean B3Alt = false;              // нажатие кнопки 3 в режиме ввода высоты
+String freqSTR = "0600";            // base frequency string
+boolean altMode = false;            // false - set pressure in hPa, true - set altitude in metres
+boolean B3Alt = false;              // button 3 pressed in altitude entry mode
 
-boolean Stmp = false;               // переменная для вывода символа "B" (НЕОБЯЗАТЕЛЬНАЯ) 
-boolean longpress = false;          // переменная для проверки на долгое нажатие кнопки
-boolean beep_ON = true;             // переменная для включения/выключения звука вариометра
-boolean soundManual = false;        // звук включён/выключен вручную - автомат его не трогает
-boolean button_beep_ON = true;      // переменная для включения/выключения звука клавиш                                   - МОЖНО МЕНЯТЬ!!!
-boolean LED_ON = false;             // переменная для включения/выключения светодиодной индикации                         - МОЖНО МЕНЯТЬ!!!
-boolean gLEDtmp = false;            // переменная для включения/выключения зеленого светодиода
-boolean rLEDtmp = false;            // переменная для включения/выключения красного светодиода
-boolean MainMenu = false;           // переменная проверки входа в меню
-boolean askSave = false;            // показан ли экран вопроса "сохранить настройки?"
-boolean saveChoice = true;          // выбранный ответ на этот вопрос (YES/NO)
-boolean presChange = false;         // включение/выключение режима ввода давления
-boolean B3Pres = false;             // увеличение символа в строке давления на единицу, если есть факт нажатия кнопки
-boolean TresUPchange = false;       // флаг для изменения значения порога срабатывания на подъёме при нажатии клавиши 3
-boolean TresDNchange = false;       // флаг для изменения значения порога срабатывания на сливе при нажатии клавиши 3
-boolean AlarmFlag = false;          // флаг для работы сигнализации при падении
-boolean Alarm = false;              // флаг ВКЛ/ВЫКЛ сигнализации при падении
-boolean AfterAlarmFlag = false;     // флаг для затирания оставшихся после тревоги символов
-boolean AltDifTmpFlag = false;      // флаг проверки был ли сброс высоты, или нет (единый для всех высот, но в коде выбирается проверка по значению cnt)
-byte RespCount = 3;                 // выбранная скорость реакции вариометра (индекс в respSamples)
-const byte respSamples[5] = {10, 20, 30, 40, 50};   // МОЖНО МЕНЯТЬ!!! сколько точек усредняется на каждом уровне
+boolean Stmp = false;               // variable to show the "B" symbol (OPTIONAL)
+boolean longpress = false;          // long press check
+boolean beep_ON = true;             // vario sound on/off
+boolean soundManual = false;        // sound switched manually - automatic control leaves it alone
+boolean button_beep_ON = true;      // button sound on/off                                   - CAN BE CHANGED!!!
+boolean LED_ON = false;             // LED indication on/off                                 - CAN BE CHANGED!!!
+boolean gLEDtmp = false;            // green LED on/off
+boolean rLEDtmp = false;            // red LED on/off
+boolean MainMenu = false;           // are we in the menu
+boolean askSave = false;            // is the "save settings?" screen shown
+boolean saveChoice = true;          // selected answer to that question (YES/NO)
+boolean presChange = false;         // pressure entry mode on/off
+boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
+boolean TresUPchange = false;       // flag to change the climb threshold with button 3
+boolean TresDNchange = false;       // flag to change the sink threshold with button 3
+boolean AlarmFlag = false;          // fall alarm flag
+boolean Alarm = false;              // fall alarm ON/OFF flag
+boolean AfterAlarmFlag = false;     // flag to clear characters left after the alarm
+boolean AltDifTmpFlag = false;      // flag: was the altitude reset or not (one for all altitudes, the code picks it by cnt)
+byte RespCount = 3;                 // selected vario response speed (index into respSamples)
+const byte respSamples[5] = {10, 20, 30, 40, 50};   // CAN BE CHANGED!!! how many points are averaged at each level
 
-static char outtemp[5];             // массив символов для отображения температуры с округлением до десятых
-static char outvario[5];            // массив символов для отображения данных вариометра с округлением до десятых
-static char outalt[5];              // массив символов для отображения высоты
-static char outTrUP[4];             // массив символов для отображения корректируемого порога срабатывания на подъёме (в МЕНЮ)
-static char outTrDN[4];             // массив символов для отображения корректируемого порога срабатывания на сливе (в МЕНЮ)
-static char outtime[4];             // массив символов для отображения времени
+static char outtemp[5];             // char array for temperature rounded to tenths
+static char outvario[5];            // char array for vario value rounded to tenths
+static char outalt[5];              // char array for altitude
+static char outTrUP[4];             // char array for the climb threshold being edited (in MENU)
+static char outTrDN[4];             // char array for the sink threshold being edited (in MENU)
+static char outtime[4];             // char array for time
 
-unsigned long timeZero = 0;         // переменная для обнуления таймера (ИМЕННО unsigned long!!!)
-boolean AutoStart = true;           // автоматическое определение старта и посадки
-boolean inFlight = false;           // идёт ли полёт
-boolean askLanded = false;          // показан ли вопрос "LANDED?"
-boolean landChoice = true;          // выбранный ответ на этот вопрос
-boolean landDismiss = false;        // после ответа NO не спрашиваем снова до движения
-boolean groundInit = false;         // получена ли первая высота земли
-float groundAlt = 0;                // опорная высота земли
-float landAlt = 0;                  // высота в начале покоя
-unsigned long varioTime = 0;        // когда начался устойчивый подъём/снижение
-unsigned long quietTime = 0;        // когда начался покой
-unsigned long flightMs = 0;         // длительность полёта, мс
+unsigned long timeZero = 0;         // variable to reset the timer (MUST be unsigned long!!!)
+boolean AutoStart = true;           // automatic take-off and landing detection
+boolean inFlight = false;           // are we flying
+boolean askLanded = false;          // is the "LANDED?" question shown
+boolean landChoice = true;          // selected answer to that question
+boolean landDismiss = false;        // after answering NO, do not ask again until there is movement
+boolean groundInit = false;         // has the first ground altitude been read
+float groundAlt = 0;                // ground reference altitude
+float landAlt = 0;                  // altitude when the quiet period started
+unsigned long varioTime = 0;        // when steady climb/sink started
+unsigned long quietTime = 0;        // when the quiet period started
+unsigned long flightMs = 0;         // flight duration, ms
 
-byte TrUPcount = 0;                 // счётчик для выбора значения порога срабатывания на подъёме из массива возможных вариантов    - МОЖНО МЕНЯТЬ только в паре с vario_up, номер ячейки брать из массива treshUP!!!
-byte TrDNcount = 3;                 // счётчик для выбора значения порога срабатывания на сливе из массива возможных вариантов      - МОЖНО МЕНЯТЬ только в паре с vario_down, номер ячейки брать из массива treshDN!!!
-byte cnt = 4;                       // счётчик нажатий кнопки 1
-byte volCount = 3;                  // громкость пищалки: 0-OFF, 1-LOW, 2-MED, 3-MAX
-const byte volDuty[4] = {0, 2, 6, 15};  // МОЖНО МЕНЯТЬ!!! скважность ШИМ для каждой громкости, %
-unsigned long toneOff = 0;          // время, когда нужно выключить звук
-byte menuCount = 0;                 // счётчик для выбора режима меню
-byte windowCount = 0;               // счётчик для выбора окна
-byte symCount = 0;                  // номер вводимого символа (ввод давления)
-byte symbolINT = 0;                 // символ integer для изменения в процедуре ввода давления
-byte samples = 40;                  // исходное 40, моё 30 | что бы увеличить скорость реакции на изменение высоты, значение переменных samples и maxsamples надо уменьшать, но
-byte maxsamples = 50;               // исходное 50, моё 40 | в таком случае повысится количество ложных срабатываний
+byte TrUPcount = 0;                 // counter to choose the climb threshold from the array    - CAN BE CHANGED only together with vario_up, take the index from treshUP!!!
+byte TrDNcount = 3;                 // counter to choose the sink threshold from the array      - CAN BE CHANGED only together with vario_down, take the index from treshDN!!!
+byte cnt = 4;                       // button 1 press counter
+byte volCount = 3;                  // buzzer volume: 0-OFF, 1-LOW, 2-MED, 3-MAX
+const byte volDuty[4] = {0, 2, 6, 15};  // CAN BE CHANGED!!! PWM duty cycle for each volume, %
+unsigned long toneOff = 0;          // time when the sound should stop
+byte menuCount = 0;                 // menu page counter
+byte windowCount = 0;               // main screen counter
+byte symCount = 0;                  // number of the digit being entered (pressure entry)
+byte symbolINT = 0;                 // integer digit for pressure entry
+byte samples = 40;                  // original 40, mine 30 | to make the vario react faster, lower samples and maxsamples, but
+byte maxsamples = 50;               // original 50, mine 40 | then there will be more false triggers
 
-byte degree[8]                      // кодируем символ градуса 
+byte degree[8]                      // degree symbol
 { 
   B11100, 
   B10100, 
@@ -170,7 +170,7 @@ byte degree[8]                      // кодируем символ граду�
   B00100, 
   B00011, 
 }; 
-byte arrow_up[8]                    // кодируем символ стрелки вверх 
+byte arrow_up[8]                    // up arrow symbol
 { 
   B00100, 
   B00100, 
@@ -181,7 +181,7 @@ byte arrow_up[8]                    // кодируем символ стрел�
   B11111, 
   B11111, 
 }; 
-byte arrow_down[8]                  // кодируем символ стрелки вниз 
+byte arrow_down[8]                  // down arrow symbol
 { 
   B11111, 
   B11111, 
@@ -192,7 +192,7 @@ byte arrow_down[8]                  // кодируем символ стрел�
   B00100, 
   B00100, 
 }; 
-byte A_1[8]                         // кодируем символ ВЫСОТА НАД МОРЕМ
+byte A_1[8]                         // ALTITUDE ABOVE SEA LEVEL symbol
 { 
   B01110, 
   B10001, 
@@ -203,7 +203,7 @@ byte A_1[8]                         // кодируем символ ВЫСОТ�
   B01010, 
   B10101, 
 }; 
-byte A_2[8]                         // кодируем символ ВЫСОТА НАД СТАРТОМ
+byte A_2[8]                         // ALTITUDE ABOVE TAKE-OFF symbol
 { 
   B01110, 
   B10001, 
@@ -214,7 +214,7 @@ byte A_2[8]                         // кодируем символ ВЫСОТ�
   B11111, 
   B11111, 
 }; 
-byte A_3[8]                         // кодируем символ ВЫСОТА 3
+byte A_3[8]                         // ALTITUDE 3 symbol
 { 
   B01110, 
   B10001, 
@@ -225,7 +225,7 @@ byte A_3[8]                         // кодируем символ ВЫСОТ�
   B01110, 
   B11111, 
 }; 
-byte arrow_e_up[8]                  // кодируем символ пустой стрелки вверх
+byte arrow_e_up[8]                  // empty up arrow symbol
 { 
   B00100, 
   B00100, 
@@ -236,7 +236,7 @@ byte arrow_e_up[8]                  // кодируем символ пусто�
   B10001, 
   B11111,
 }; 
-byte arrow_e_down[8]                // кодируем символ пустой стрелки вниз
+byte arrow_e_down[8]                // empty down arrow symbol
 { 
   B11111, 
   B10001, 
@@ -248,8 +248,8 @@ byte arrow_e_down[8]                // кодируем символ пусто�
   B00100,
 }; 
 
-///// НАЧАЛЬНЫЕ УСТАНОВКИ / INITIAL SETUP /////
-///// СОХРАНЕНИЕ НАСТРОЕК В ПАМЯТЬ / SAVED SETTINGS (EEPROM) /////
+///// INITIAL SETUP /////
+///// SAVED SETTINGS (EEPROM) /////
 struct SavedSettings {
   uint16_t magic;
   byte TrUP, TrDN, vol, avg, resp;
@@ -258,13 +258,13 @@ struct SavedSettings {
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55F       // если изменить это число, сохранённые настройки сбросятся
+#define SETTINGS_MAGIC 0xA55F       // change this number to reset the saved settings
 
 void applySettings()
 {
   vario_up = treshUP[TrUPcount];
   vario_down = treshDN[TrDNcount];
-  applyResponse();                  // и скорость реакции
+  applyResponse();                  // and the response speed
 }
 
 void loadSettings()
@@ -286,142 +286,142 @@ void saveSettings()
   s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount; s.avg = AvgCount;
   s.led = LED_ON; s.btnBeep = button_beep_ON; s.resp = RespCount; s.autoStart = AutoStart; s.base = baseFreq;
   s.presSea = presSea;
-  EEPROM.put(0, s);                 // записываются только изменившиеся байты
+  EEPROM.put(0, s);                 // only changed bytes are written
 }
 
-///// СНИМОК НАСТРОЕК ПРИ ВХОДЕ В МЕНЮ / SETTINGS BACKUP ON MENU ENTRY /////
-byte bkTrUP, bkTrDN, bkVol, bkAvg;  // копии настроек на момент входа в меню
+///// SETTINGS BACKUP ON MENU ENTRY /////
+byte bkTrUP, bkTrDN, bkVol, bkAvg;  // copies of the settings when the menu was opened
 boolean bkLED, bkBtn, bkAuto;       //
 byte bkResp;                        //
 unsigned int bkBase;                //
 float bkPres;                       //
 
-void backupSettings()               // запоминаем настройки при входе в меню
+void backupSettings()               // remember the settings when the menu opens
 {
   bkTrUP = TrUPcount; bkTrDN = TrDNcount; bkVol = volCount; bkAvg = AvgCount;
   bkLED = LED_ON; bkBtn = button_beep_ON; bkResp = RespCount; bkAuto = AutoStart; bkBase = baseFreq;
   bkPres = presSea;
 }
 
-void restoreSettings()              // возвращаем настройки, какими они были при входе в меню
+void restoreSettings()              // put the settings back as they were when the menu opened
 {
   TrUPcount = bkTrUP; TrDNcount = bkTrDN; volCount = bkVol; AvgCount = bkAvg;
   LED_ON = bkLED; button_beep_ON = bkBtn; RespCount = bkResp; AutoStart = bkAuto; baseFreq = bkBase;
   presSea = bkPres;
   applySettings();
-  avgFill = 0;                      // усреднение начинаем заново
+  avgFill = 0;                      // start averaging again
 }
 
-///// СКОРОСТЬ РЕАКЦИИ ВАРИОМЕТРА / VARIO RESPONSE SPEED /////
-void applyResponse()                // применяем выбранную скорость реакции
+///// VARIO RESPONSE SPEED /////
+void applyResponse()                // apply the selected response speed
 {
   samples = respSamples[RespCount]; //
-  maxsamples = samples + 10;        // запас истории
-  if (maxsamples > 50) {maxsamples = 50;}   // больше массив не вмещает
-  tempo = millis();                 // сбрасываем усреднитель, что бы показание не прыгнуло
+  maxsamples = samples + 10;        // extra history
+  if (maxsamples > 50) {maxsamples = 50;}   // the array cannot hold more
+  tempo = millis();                 // reset the averager so the reading does not jump
   N1 = 0; N2 = 0; N3 = 0;           //
   D1 = 0; D2 = 0;                   //
   vario = 0;                        //
 }
 
-///// АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ СТАРТА И ПОСАДКИ / AUTO TAKE-OFF AND LANDING /////
-#define TO_ALT 10.0                 // МОЖНО МЕНЯТЬ!!! уход по высоте для определения старта, м
-#define TO_VARIO 0.5                // МОЖНО МЕНЯТЬ!!! порог вариометра для определения старта, м/с
-#define TO_SEC 3                    // МОЖНО МЕНЯТЬ!!! сколько секунд держится этот порог
-#define LAND_VARIO 0.2              // МОЖНО МЕНЯТЬ!!! порог вариометра для определения покоя, м/с
-#define LAND_ALT 3.0                // МОЖНО МЕНЯТЬ!!! допустимый уход по высоте в покое, м
-#define LAND_SEC 60                 // МОЖНО МЕНЯТЬ!!! сколько секунд покоя до вопроса о посадке
+///// AUTO TAKE-OFF AND LANDING /////
+#define TO_ALT 10.0                 // CAN BE CHANGED!!! altitude change to detect take-off, m
+#define TO_VARIO 0.5                // CAN BE CHANGED!!! vario threshold to detect take-off, m/s
+#define TO_SEC 3                    // CAN BE CHANGED!!! how many seconds this threshold must hold
+#define LAND_VARIO 0.2              // CAN BE CHANGED!!! vario threshold for being still, m/s
+#define LAND_ALT 3.0                // CAN BE CHANGED!!! allowed altitude change while still, m
+#define LAND_SEC 60                 // CAN BE CHANGED!!! seconds of stillness before asking about landing
 
-void takeOff()                      // старт обнаружен
+void takeOff()                      // take-off detected
 {
   inFlight = true;                  //
-  altTmp = int(groundAlt);          // высоту над стартом считаем от места взлёта
-  timeZero = millis();              // запускаем таймер полёта
+  altTmp = int(groundAlt);          // altitude above take-off is measured from the launch point
+  timeZero = millis();              // start the flight timer
   flightMs = 0;                     //
-  maxVario = 0; minVario = 0;       // обнуляем макс/мин вариометра
+  maxVario = 0; minVario = 0;       // reset vario max/min
   maxVarioAvg = 0; minVarioAvg = 0; //
-  maxAltSea = 0; maxAltStt = 0; maxAltAdd = 0;   // и максимальные высоты
+  maxAltSea = 0; maxAltStt = 0; maxAltAdd = 0;   // and the maximum altitudes
   quietTime = 0;                    //
   landAlt = sensor.alti;            //
-  beep_ON = true;                  // включаем звук вариометра
+  beep_ON = true;                  // turn on vario sound
   soundManual = false;             //
-  triple_beep();                    // сигнал о старте
+  triple_beep();                    // take-off signal
 }
 
-void landed()                       // посадка подтверждена
+void landed()                       // landing confirmed
 {
-  inFlight = false;                 // таймер полёта останавливается на своём значении
+  inFlight = false;                 // flight timer stops at its value
   askLanded = false;                //
-  groundAlt = sensor.alti;          // снова следим за высотой земли
+  groundAlt = sensor.alti;          // track the ground altitude again
   varioTime = 0;                    //
   quietTime = 0;                    //
   landDismiss = false;              //
-  beep_ON = false;                 // на земле звук вариометра выключен
+  beep_ON = false;                 // on the ground the vario sound is off
   soundManual = false;             //
-  SSL_beep();                       // сигнал о посадке
+  SSL_beep();                       // landing signal
   lcd.clear();                      //
 }
 
-void flightDetect()                 // вызывается раз в секунду
+void flightDetect()                 // called once per second
 {
   if (groundInit == false) {groundAlt = sensor.alti; landAlt = sensor.alti; groundInit = true;}
-  if ((MainMenu == false) && (soundManual == false))                                 // на земле молчим, в полёте звучим
+  if ((MainMenu == false) && (soundManual == false))                                 // silent on the ground, sound in flight
     {beep_ON = ((AutoStart == false) || (inFlight == true));}                        //
   if (AutoStart == false) {return;} //
   unsigned long now = millis();     //
-  if (inFlight == false)            // ===== НА ЗЕМЛЕ =====
+  if (inFlight == false)            // ===== ON THE GROUND =====
     {
-      groundAlt += (sensor.alti - groundAlt) * 0.05;    // медленно следим за высотой земли (постоянная ~20 с)
-      if (fabs(vario) > TO_VARIO)   // устойчивый подъём или снижение...
-        {if (varioTime == 0) {varioTime = now;}}        // ... засекаем время
+      groundAlt += (sensor.alti - groundAlt) * 0.05;    // slowly follow the ground altitude (time constant ~20 s)
+      if (fabs(vario) > TO_VARIO)   // steady climb or sink...
+        {if (varioTime == 0) {varioTime = now;}}        // ... start timing
       else {varioTime = 0;}         //
-      if ((fabs(sensor.alti - groundAlt) > TO_ALT) ||                                  // ушли по высоте...
-          ((varioTime != 0) && (now - varioTime >= (unsigned long)TO_SEC*1000)))       // ... или вариометр держится
+      if ((fabs(sensor.alti - groundAlt) > TO_ALT) ||                                  // altitude changed...
+          ((varioTime != 0) && (now - varioTime >= (unsigned long)TO_SEC*1000)))       // ... or the vario stayed above threshold
         {takeOff();}                //
     }
-  else                              // ===== В ПОЛЁТЕ =====
+  else                              // ===== IN FLIGHT =====
     {
-      if (fabs(vario) > TO_VARIO) {landDismiss = false;}   // снова есть движение - можно спросить ещё раз
+      if (fabs(vario) > TO_VARIO) {landDismiss = false;}   // movement again - can ask again
       if ((fabs(vario) < LAND_VARIO) && (fabs(sensor.alti - landAlt) < LAND_ALT))
         {
-          if (quietTime == 0) {quietTime = now;}           // засекаем время покоя
+          if (quietTime == 0) {quietTime = now;}           // start timing the quiet period
           if ((now - quietTime >= (unsigned long)LAND_SEC*1000) && (askLanded == false)
               && (landDismiss == false) && (MainMenu == false))
-            {askLanded = true; landChoice = true; triple_beep(); lcd.clear();}          // спрашиваем "LANDED?"
+            {askLanded = true; landChoice = true; triple_beep(); lcd.clear();}          // ask "LANDED?"
         }
-      else {quietTime = 0; landAlt = sensor.alti;}         // покой прервался
+      else {quietTime = 0; landAlt = sensor.alti;}         // quiet period broken
     }
 }
 
-///// ВЫХОД ИЗ МЕНЮ С ОТВЕТОМ НА ВОПРОС О СОХРАНЕНИИ / LEAVE MENU /////
+///// LEAVE MENU /////
 void exitMenu()
 {
-  askSave = false;                    // убираем экран вопроса
-  altChange = false;                  // выключаем режим ввода высоты
-  volEdit = false;                    // выключаем настройку громкости
-  freqEdit = false;                   // и ввод частоты
-  MainMenu = false;                   // закрываем меню
-  menuCount = 0;                      // обнуляем счётчик режимов меню
-  symCount = 0;                       // обнуляем счётчик символов
-  if (presChange == true)             // если выходим в режиме редактирования давления...
+  askSave = false;                    // remove the question screen
+  altChange = false;                  // turn off altitude entry
+  volEdit = false;                    // turn off volume setting
+  freqEdit = false;                   // and frequency entry
+  MainMenu = false;                   // close the menu
+  menuCount = 0;                      // reset the menu page counter
+  symCount = 0;                       // reset the digit counter
+  if (presChange == true)             // if leaving while editing pressure...
     {
-      presChange = false;             // ... выключаем режим
-      presTMP = presSea;              // ... возвращаем прежнее значение
+      presChange = false;             // ... turn off the mode
+      presTMP = presSea;              // ... restore the previous value
       presSTR = presToStr(presTMP);   //
     }
-  if (saveChoice == true) {saveSettings();}   // YES - сохраняем настройки в память
-  else                                        // NO - возвращаем настройки, какими они были при входе в меню
+  if (saveChoice == true) {saveSettings();}   // YES - save settings to memory
+  else                                        // NO - put the settings back as they were when the menu opened
     {
       restoreSettings();              //
     }
   presTMP = presSea;                  //
   presSTR = presToStr(presTMP);       //
-  beep_ON = ((AutoStart == false) || (inFlight == true));   // звук вариометра включается только в полёте
+  beep_ON = ((AutoStart == false) || (inFlight == true));   // vario sound turns on only in flight
   soundManual = false;                //
-  lcd.clear();                        // очищаем экран
+  lcd.clear();                        // clear the screen
 }
 
-String presToStr(float v)           // давление в виде строки "1013.2" (4 цифры + 1 после точки)
+String presToStr(float v)           // pressure as a string "1013.2" (4 digits + 1 after the point)
 {
   char buf[10];
   dtostrf(v, 6, 1, buf);
@@ -431,116 +431,116 @@ String presToStr(float v)           // давление в виде строки
 
 void setup() 
 { 
-  //Serial.begin(9600);               // установка порта на скорость 9600 бит/сек
+  // Serial.begin(9600);               // set the serial port to 9600 baud
 
-  loadSettings();                   // читаем сохранённые настройки из энергонезависимой памяти
-  presTMP = presSea;                // временная переменная давления (для расчётов) = дефолтное давление (presSea используется в формуле расчёта высоты)
-  presSTR = presToStr(presTMP);        // преобразование давления из float в String
-  applySettings();                  // применяем пороги из сохранённых настроек (vario_up, vario_down)
-  backupSettings();                 // первый снимок настроек (на случай ответа NO до первого входа в меню)
+  loadSettings();                   // read the saved settings from EEPROM
+  presTMP = presSea;                // temporary pressure (for calculations) = default pressure (presSea is used in the altitude formula)
+  presSTR = presToStr(presTMP);        // convert pressure from float to String
+  applySettings();                  // apply thresholds from the saved settings (vario_up, vario_down)
+  backupSettings();                 // first settings snapshot (in case NO is answered before the menu is ever opened)
   
-  pinMode(p, OUTPUT);               // установка пина 3 в output (это пин пищалки)
-  pinMode(gLED, OUTPUT);            // установка пина 7 в output (это пин зеленого светодиода)
-  pinMode(rLED, OUTPUT);            // установка пина 8 в output (это пин красного светодиода)
+  pinMode(p, OUTPUT);               // pin 3 as output (buzzer)
+  pinMode(gLED, OUTPUT);            // pin 7 as output (green LED)
+  pinMode(rLED, OUTPUT);            // pin 8 as output (red LED)
   
-  pinMode(switchPin1, INPUT);       // установка пина 4 в input (это пин кнопки)
-  digitalWrite(switchPin1, LOW);    // отключаем внутреннюю подтяжку; используется внешний резистор 10 кОм
-  b1.attach(switchPin1);            // объект Bounce будет слушать кнопку на пине switchPin1
-  b1.interval(5);                   // устанавливаем время задержки в 5 мс
+  pinMode(switchPin1, INPUT);       // pin 4 as input (button)
+  digitalWrite(switchPin1, LOW);    // disable the internal pull-up; an external 10k resistor is used
+  b1.attach(switchPin1);            // Bounce object listens to the button on switchPin1
+  b1.interval(5);                   // debounce time 5 ms
 
-  pinMode(switchPin2, INPUT);       // установка пина 5 в input (это пин кнопки)
-  digitalWrite(switchPin2, LOW);    // отключаем внутреннюю подтяжку; используется внешний резистор 10 кОм
-  b2.attach(switchPin2);            // объект Bounce будет слушать кнопку на пине switchPin2
-  b2.interval(5);                   // устанавливаем время задержки в 5 мс
+  pinMode(switchPin2, INPUT);       // pin 5 as input (button)
+  digitalWrite(switchPin2, LOW);    // disable the internal pull-up; an external 10k resistor is used
+  b2.attach(switchPin2);            // Bounce object listens to the button on switchPin2
+  b2.interval(5);                   // debounce time 5 ms
 
-  pinMode(switchPin3, INPUT);       // установка пина 6 в input (это пин кнопки)
-  digitalWrite(switchPin3, LOW);    // отключаем внутреннюю подтяжку; используется внешний резистор 10 кОм
-  b3.attach(switchPin3);            // объект Bounce будет слушать кнопку на пине switchPin3
-  b3.interval(5);                   // устанавливаем время задержки в 5 мс
+  pinMode(switchPin3, INPUT);       // pin 6 as input (button)
+  digitalWrite(switchPin3, LOW);    // disable the internal pull-up; an external 10k resistor is used
+  b3.attach(switchPin3);            // Bounce object listens to the button on switchPin3
+  b3.interval(5);                   // debounce time 5 ms
   
-  lcd.init();                       // инициализация lcd 
+  lcd.init();                       // LCD init
   lcd.setCursor(0,0);               //
-  lcd.print(" HELLO ERNESTO ");    // первая строка экрана приветствия
+  lcd.print(" HELLO ERNESTO ");    // first line of the start screen
   lcd.setCursor(0,1);               //
-  lcd.print("BARO SENSOR TEST");    // вторая строка экрана приветствия
-  delay(1000);                      // задержка 1 секунда
-    for (int i = 0; i<2; i++)             // чуть поморгаем диодами при старте. Типа с какой-то высшей целью, а на самом деле, это просто круто выглядит! =)
+  lcd.print("BARO SENSOR TEST");    // second line of the start screen
+  delay(1000);                      // 1 second delay
+    for (int i = 0; i<2; i++)             // blink the LEDs at start. Supposedly for a higher purpose, really it just looks cool! =)
       {                                   //
-        digitalWrite(gLED, HIGH);         // включаем зеленый светодиод при старте прибора
-        digitalWrite(rLED, HIGH);         // включаем красный светодиод при старте прибора
+        digitalWrite(gLED, HIGH);         // green LED on at start
+        digitalWrite(rLED, HIGH);         // red LED on at start
         delay(50);                        //
-        digitalWrite(gLED, LOW);          // вЫключаем зеленый светодиод при старте прибора
-        digitalWrite(rLED, LOW);          // вЫключаем красный светодиод при старте прибора
+        digitalWrite(gLED, LOW);          // green LED off at start
+        digitalWrite(rLED, LOW);          // red LED off at start
         delay(100);                       //
       }                                   //
-  lcd.clear();                      // очистка экрана
+  lcd.clear();                      // clear screen
   lcd.setCursor(3,0);               //
-  lcd.print("def. pres.");          // надпись "дефолтное давление"
+  lcd.print("def. pres.");          // label "default pressure"
   lcd.setCursor(5,1);               //
-  lcd.print(String(presSea,1)+" hPa");   // выводим стартовое давление в hPa
-  delay(1000);                      // задержка 2 секунды
-  playTone((2500),70);                // двойной сигнал при запуске прибора  
+  lcd.print(String(presSea,1)+" hPa");   // show the start pressure in hPa
+  delay(1000);                      // 2 second delay
+  playTone((2500),70);                // double beep at start
   beepDelay(150);                       //
   playTone((2500),70);                //
   beepDelay(70);                   //
-  lcd.clear();                      // очищаем экран перед отображением главного окна
+  lcd.clear();                      // clear the screen before the main window
   
-  sensor.begin();                   // инициализация сенсора bmp180. в скобках можно указать начальную высоту в метрах 
+  sensor.begin();                   // bmp180 init. Start altitude in metres can be given in the brackets
   
-  lcd.createChar(1, degree);        // создаём значок градуса 
-  lcd.createChar(2, arrow_up);      // создаём значок стрелки вверх
-  lcd.createChar(3, arrow_down);    // создаём значок стрелки вниз
-  lcd.createChar(4, A_1);           // создаём значок A_1
-  lcd.createChar(5, A_2);           // создаём значок A_2
-  lcd.createChar(6, A_3);           // создаём значок A_3
-  lcd.createChar(7, arrow_e_up);    // создаём значок пустой стрелки вверх
-  lcd.createChar(0, arrow_e_down);  // создаём значок пустой стрелки вверх
+  lcd.createChar(1, degree);        // create degree symbol
+  lcd.createChar(2, arrow_up);      // create up arrow symbol
+  lcd.createChar(3, arrow_down);    // create down arrow symbol
+  lcd.createChar(4, A_1);           // create A_1 symbol
+  lcd.createChar(5, A_2);           // create A_2 symbol
+  lcd.createChar(6, A_3);           // create A_3 symbol
+  lcd.createChar(7, arrow_e_up);    // create empty up arrow symbol
+  lcd.createChar(0, arrow_e_down);  // create empty up arrow symbol
 } 
 
-///// ПОДПРОГРАММА ВЫВОДА ДАННЫХ НА ЭКРАН / LCD OUTPUT /////
-void lcd_out()                                                          // функция вывода значений на экран code by nuclear_XONIX (Ильюшенко Андрей, Iliushenko Andrei)
+///// LCD OUTPUT /////
+void lcd_out()                                                          // screen output function, code by nuclear_XONIX (Iliushenko Andrei)
 {                                                                       // 
-if (askLanded == true)                                                  // экран вопроса о посадке
+if (askLanded == true)                                                  // landing question screen
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
     lcd.print("LANDED?         ");                                      //
     lcd.setCursor(0,1);                                                 //
-    if (landChoice == true) {lcd.print("  > YES     no  ");}            // выбран ответ YES
-    else                    {lcd.print("    yes   > NO  ");}            // выбран ответ NO
+    if (landChoice == true) {lcd.print("  > YES     no  ");}            // YES selected
+    else                    {lcd.print("    yes   > NO  ");}            // NO selected
     return;                                                             //
   }                                                                     //
 
-if (Alarm == false)                                                     // если тревога выключена
+if (Alarm == false)                                                     // if the alarm is off
 {                                                                       //
-if (AfterAlarmFlag == true)                                             // если взведён флаг очистки после тревоги, то
-  {lcd.clear(); AfterAlarmFlag = false;}                                // очищаем экран и сбрасываем флаг
+if (AfterAlarmFlag == true)                                             // if the after-alarm clear flag is set
+  {lcd.clear(); AfterAlarmFlag = false;}                                // clear the screen and reset the flag
 
-///// ГЛАВНОЕ ОКНО 1 / MAIN WINDOW 1 /////
-if (windowCount == 0)                                                   // если выбран первый экран меню
+///// MAIN WINDOW 1 /////
+if (windowCount == 0)                                                   // if the first main screen is selected
 {                                                                       //
   
-///// ВЫВОД СИМВОЛА РАБОТЫ ЗВУКА ВАРИОМЕТРА "B" / SYMBOL "B" OUTPUT (for Vario) /////
+///// SYMBOL "B" OUTPUT (for Vario) /////
   lcd.setCursor(5,0);                                                   //
-    if (Stmp==true) {lcd.print("B");}                                   // вывод символа "B" (beep) при наличии звука пищалки (на случай, если динамик отключён)
-    else {lcd.print(" ");}                                              // вывод символа " " при отсутствии звука пищалки (на случай, если динамик отключён)
+    if (Stmp==true) {lcd.print("B");}                                   // show "B" (beep) when the buzzer sounds (in case the speaker is disconnected)
+    else {lcd.print(" ");}                                              // show " " when the buzzer is silent (in case the speaker is disconnected)
       
-///// ВЫВОД СИМВОЛА ДИНАМИКА "S" (SOUND) / SYMBOL "S" OUTPUT (for Speaker) /////
+///// SYMBOL "S" OUTPUT (for Speaker) /////
   lcd.setCursor(9,0);                                                   //
-  if (beep_ON == true) {lcd.print("S");}                                // если звук включён, то рисуем символ SOUND ("S")
-  else {lcd.print(" ");}                                                // иначе рисуем пустой символ (" ")
+  if (beep_ON == true) {lcd.print("S");}                                // if sound is on, show SOUND symbol ("S")
+  else {lcd.print(" ");}                                                // otherwise show a blank (" ")
 
-///// ВЫВОД ИНДИКАТОРА ВАРИОМЕТРА (стрелки) / VARIO INDICATION OUTPUT (Arrows) /////
-    if (vario>0.1)                                                      // если значение вариометра положительное (>0.1 для компенсации погрешности работы датчика), то закрашиваем стрелку вверх
+///// VARIO INDICATION OUTPUT (Arrows) /////
+    if (vario>0.1)                                                      // if vario is positive (>0.1 to allow for sensor error), fill the up arrow
     {                                                                   //
       lcd.setCursor(0,0);                                               //
       lcd.write(byte(2));                                               //
     }                                                                   // 
-    if (vario<-0.1)                                                     // если значение вариометра отрицательное (<-0.1 для компенсации погрешности работы датчика), то закрашиваем стрелку вниз
+    if (vario<-0.1)                                                     // if vario is negative (<-0.1 to allow for sensor error), fill the down arrow
     {                                                                   //
       lcd.setCursor(0,1);                                               //
       lcd.write(byte(3));                                               //
     }                                                                   // 
-    if ((vario>=-0.1) && (vario<=0.1))                                  // если значение вариометра нулевое (от -0.02 до 0 для компенсации погрешности работы датчика), то рисуем две пустых стрелки вверх и вниз
+    if ((vario>=-0.1) && (vario<=0.1))                                  // if vario is zero (-0.02 to 0, to allow for sensor error), show both empty arrows
     {                                                                   //
       lcd.setCursor(0,0);                                               //
       lcd.write(byte(7));                                               //
@@ -548,88 +548,88 @@ if (windowCount == 0)                                                   // ес�
       lcd.write(byte(0));                                               //
     }                                                                   // 
 
-///// ВЫВОД ЗНАЧЕНИЙ ВАРИОМЕТРА / VARIO OUTPUT /////
-  dtostrf(varioAvg,4, 1, outvario);                                        // перевод значения переменной vario (float) в массив символов для возможности округления до десятых
+///// VARIO OUTPUT /////
+  dtostrf(varioAvg,4, 1, outvario);                                        // convert vario (float) to a char array rounded to tenths
   lcd.setCursor(1,0);                                                   //
-  lcd.print(outvario);                                                  // вывод значений вариометра с округлением до десятых
+  lcd.print(outvario);                                                  // show vario rounded to tenths
 
-///// ВЫВОД ТЕМПЕРАТУРЫ / TEMPERATURE OUTPUT (C) /////
-  dtostrf(sensor.temp,5, 1, outtemp);                                   // перевод параметра сенсора sensor.temp в массив символов для возможности округления до десятых
+///// TEMPERATURE OUTPUT (C) /////
+  dtostrf(sensor.temp,5, 1, outtemp);                                   // convert sensor.temp to a char array rounded to tenths
   lcd.setCursor(10,1);                                                  //
-  lcd.print(outtemp);                                                   // вывод значения температуры с округлением до десятых
-  lcd.write(byte(1));                                                   // рисуем символ градуса при выводе значений температуры 
+  lcd.print(outtemp);                                                   // show temperature rounded to tenths
+  lcd.write(byte(1));                                                   // degree symbol after the temperature
 
-///// ВЫВОД ВРЕМЕНИ / TIME OUTPUT (Min) /////
+///// TIME OUTPUT (Min) /////
   lcd.setCursor(11,0);                                                  //
-  lcd.print("Tm");                                                      // печатаем Tm (Time minute)
-  dtostrf(((flightMs/1000)/60),3, 0, outtime);               // перевод значения отсчитанного времени в массив символов для возможности округления до целых
-  lcd.print(outtime);                                                   // вывод значений времени с округлением до целых
+  lcd.print("Tm");                                                      // print Tm (time, minutes)
+  dtostrf(((flightMs/1000)/60),3, 0, outtime);               // convert elapsed time to a char array rounded to whole numbers
+  lcd.print(outtime);                                                   // show time rounded to whole numbers
 
-///// ВЫВОД ВЫСОТЫ НАД УРОВНЕМ МОРЯ / ALT ABOVE SEA OUTPUT (m) /////
-if (cnt==4)                                                             // ВЫСОТА НА УРОВНЕ МОРЯ
+///// ALT ABOVE SEA OUTPUT (m) /////
+if (cnt==4)                                                             // ALTITUDE ABOVE SEA LEVEL
   {                                                                     //
   lcd.setCursor(2,1);                                                   //
-  lcd.write(byte(cnt));                                                 // вывод символа высоты (cnt - счётчик, обновляемый при нажатии кнопки)
-  dtostrf(float(altitudeSEA),4, 0, outalt);                             // перевод параметра сенсора sensor.temp в массив символов для возможности округления до десятых
-  lcd.print(outalt);                                                    // вывод значения температуры с округлением до десятых
+  lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
+  dtostrf(float(altitudeSEA),4, 0, outalt);                             // convert sensor.temp to a char array rounded to tenths
+  lcd.print(outalt);                                                    // show temperature rounded to tenths
   lcd.print("m");                                                       //
   }                                                                     //
 
-///// ВЫВОД ВЫСОТЫ НАД СТАРТОМ / ALT ABOVE TAKE OFF POINT OUTPUT (m) /////
-if (cnt==5)                                                             // ВЫСОТА НА УРОВНЕ СТАРТА
+///// ALT ABOVE TAKE OFF POINT OUTPUT (m) /////
+if (cnt==5)                                                             // ALTITUDE ABOVE TAKE-OFF
   {                                                                     // 
   lcd.setCursor(2,1);                                                   //
-  lcd.write(byte(cnt));                                                 // вывод символа высоты (cnt - счётчик, обновляемый при нажатии кнопки)
-  dtostrf(float(altitude),4, 0, outalt);                                // перевод параметра сенсора sensor.temp в массив символов для возможности округления до десятых
-  lcd.print(outalt);                                                    // вывод значения температуры с округлением до десятых
+  lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
+  dtostrf(float(altitude),4, 0, outalt);                                // convert sensor.temp to a char array rounded to tenths
+  lcd.print(outalt);                                                    // show temperature rounded to tenths
   lcd.print("m");                                                       //
   }                                                                     //
 
-///// ВЫВОД ДОПОЛНИТЕЛЬНОЙ ВЫСОТЫ / ADDITIONAL ALT OUTPUT (m) /////
-if (cnt==6)                                                             // ВЫСОТА ДОПОЛНИТЕЛЬНАЯ
+///// ADDITIONAL ALT OUTPUT (m) /////
+if (cnt==6)                                                             // EXTRA ALTITUDE
   {                                                                     //
   lcd.setCursor(2,1);                                                   //
-  lcd.write(byte(cnt));                                                 // вывод символа высоты (cnt - счётчик, обновляемый при нажатии кнопки)
-  dtostrf(float(altitudeAdd),4, 0, outalt);                             // перевод параметра сенсора sensor.temp в массив символов для возможности округления до десятых
-  lcd.print(outalt);                                                    // вывод значения температуры с округлением до десятых
+  lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
+  dtostrf(float(altitudeAdd),4, 0, outalt);                             // convert sensor.temp to a char array rounded to tenths
+  lcd.print(outalt);                                                    // show temperature rounded to tenths
   lcd.print("m");                                                       //
   }                                                                     //
 }                                                                       //
 
-///// ГЛАВНОЕ ОКНО 2 / MAIN WINDOW 2 (Max altitudes) /////
-if (windowCount == 1)                                                                   // если выбран второй экран меню
+///// MAIN WINDOW 2 (Max altitudes) /////
+if (windowCount == 1)                                                                   // if the second main screen is selected
   {                                                                                     //
     lcd.setCursor(0,0);                                                                 //
-    lcd.print("Max Alt: "); lcd.write(byte(4)); lcd.print(" "+String(maxAltSea)+"m");   // рисуем заголовок и значение максимальной высоты над морем
+    lcd.print("Max Alt: "); lcd.write(byte(4)); lcd.print(" "+String(maxAltSea)+"m");   // title and maximum altitude above sea level
     lcd.setCursor(0,1);                                                                 //
-    lcd.write(byte(5)); lcd.print(" "+String(maxAltStt)+"m");                           // рисуем значение максимальной высоты над стартом
+    lcd.write(byte(5)); lcd.print(" "+String(maxAltStt)+"m");                           // maximum altitude above take-off
     lcd.setCursor(9,1);                                                                 //
-    lcd.write(byte(6)); lcd.print(" "+String(maxAltAdd)+"m");                           // рисуем значение максимальной дополнительной высоты
+    lcd.write(byte(6)); lcd.print(" "+String(maxAltAdd)+"m");                           // maximum extra altitude
   }                                                                                     //
 
-///// ГЛАВНОЕ ОКНО 3 / MAIN WINDOW 3 (Max/Min vario) /////
-if (windowCount == 2)                                                   // если выбран третий экран меню
+///// Min vario) /////
+if (windowCount == 2)                                                   // if the third main screen is selected
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("Max Var:   "); lcd.print(maxVario);                      // печатаем максимальное значение вариометра
+    lcd.print("Max Var:   "); lcd.print(maxVario);                      // print maximum vario
     lcd.setCursor(0,1);                                                 //
-    lcd.print("Min Var:   "); lcd.print(minVario);                      // печатаем минимальное значение вариометра
+    lcd.print("Min Var:   "); lcd.print(minVario);                      // print minimum vario
   }                                                                     //
 
-///// ЭКРАННОЕ ОКНО 4 / MAIN WINDOW 4 (Max/Min averaged vario) /////
-if (windowCount == 3)                                                   // если выбрано четвёртое окно...
+///// Min averaged vario) /////
+if (windowCount == 3)                                                   // if the fourth screen is selected...
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("Max Avg:   "); lcd.print(maxVarioAvg);                   // выводим максимальное усреднённое значение
+    lcd.print("Max Avg:   "); lcd.print(maxVarioAvg);                   // show maximum averaged value
     lcd.setCursor(0,1);                                                 //
-    lcd.print("Min Avg:   "); lcd.print(minVarioAvg);                   // выводим минимальное усреднённое значение
+    lcd.print("Min Avg:   "); lcd.print(minVarioAvg);                   // show minimum averaged value
   }                                                                     //
 }                                                                       //
-}                                                                       // конец вывода на экран
+}                                                                       // end of screen output
 
-///// ЗВУК С РЕГУЛИРОВКОЙ ГРОМКОСТИ / TONE WITH VOLUME CONTROL /////
-///// Пищалка на пине 3 (OC2B). Частоту задаёт таймер 2, громкость - скважность ШИМ.
-void stopTone()                                                         // выключаем звук
+///// TONE WITH VOLUME CONTROL /////
+// /// Buzzer on pin 3 (OC2B). Timer 2 sets the frequency, PWM duty cycle sets the volume.
+void stopTone()                                                         // stop the sound
 {
   TCCR2A = 0;                                                           //
   TCCR2B = 0;                                                           //
@@ -637,49 +637,49 @@ void stopTone()                                                         // вы�
   toneOff = 0;                                                          //
 }
 
-void playTone(unsigned int freq, unsigned int dur)                      // звук заданной частоты и длительности
+void playTone(unsigned int freq, unsigned int dur)                      // sound with given frequency and duration
 {
-  if (volCount == 0) {stopTone(); return;}                              // громкость OFF - молчим
-  if (freq < 70) {freq = 70;}                                           // ниже таймер 2 не может
+  if (volCount == 0) {stopTone(); return;}                              // volume OFF - stay silent
+  if (freq < 70) {freq = 70;}                                           // timer 2 cannot go lower
   if (freq > 5000) {freq = 5000;}                                       //
   byte top;                                                             //
   byte cs;                                                              //
-  if (freq < 250) {top = (15625UL / freq) - 1; cs = _BV(CS22) | _BV(CS21) | _BV(CS20);}   // низкие частоты: предделитель 1024
-  else            {top = (62500UL / freq) - 1; cs = _BV(CS22) | _BV(CS21);}               // остальные: предделитель 256
-  OCR2A = top;                                                          // частота
-  OCR2B = (unsigned int)top * volDuty[volCount] / 100;                  // громкость
-  TCCR2A = _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);                       // быстрый ШИМ на OC2B
-  TCCR2B = _BV(WGM22) | cs;                                             // TOP = OCR2A, выбранный предделитель
-  toneOff = millis() + dur;                                             // когда выключить
+  if (freq < 250) {top = (15625UL / freq) - 1; cs = _BV(CS22) | _BV(CS21) | _BV(CS20);}   // low frequencies: prescaler 1024
+  else            {top = (62500UL / freq) - 1; cs = _BV(CS22) | _BV(CS21);}               // the rest: prescaler 256
+  OCR2A = top;                                                          // frequency
+  OCR2B = (unsigned int)top * volDuty[volCount] / 100;                  // volume
+  TCCR2A = _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);                       // fast PWM on OC2B
+  TCCR2B = _BV(WGM22) | cs;                                             // TOP = OCR2A, selected prescaler
+  toneOff = millis() + dur;                                             // when to stop
 }
 
-void toneService()                                                      // вызывается в каждом цикле - выключает звук вовремя
+void toneService()                                                      // called every loop - stops the sound on time
 {
   if ((toneOff != 0) && (millis() >= toneOff)) {stopTone();}            //
 }
 
-void beepDelay(unsigned int ms)                                         // пауза, во время которой звук выключается вовремя
+void beepDelay(unsigned int ms)                                         // pause during which the sound still stops on time
 {
   unsigned long t = millis() + ms;                                      //
   while (millis() < t) {toneService();}                                 //
 }
 
-///// СИГНАЛ НАЖАТИЯ КНОПКИ / BUTTON BEEP /////
-void button_beep()                                                      // СИГНАЛ НАЖАТИЯ КНОПКИ
+///// BUTTON BEEP /////
+void button_beep()                                                      // BUTTON BEEP
 {                                                                       //
-  if (button_beep_ON == true) {playTone(1800,30); beepDelay(30);}                        // пищим только если в настройках включен звук клавиш
+  if (button_beep_ON == true) {playTone(1800,30); beepDelay(30);}                        // beep only if button sound is on
 }                                                                       //
 
-///// ДЛИННЫЙ БИП / LONG BEEP /////
-void long_beep()                                                        // ДЛИННЫЙ БИП
+///// LONG BEEP /////
+void long_beep()                                                        // LONG BEEP
 {                                                                       //
-  if (button_beep_ON == true) {playTone(1800,200); beepDelay(200);}                       // пищим только если в настройках включен звук клавиш
+  if (button_beep_ON == true) {playTone(1800,200); beepDelay(200);}                       // beep only if button sound is on
 }                                                                       //
 
-///// ТРОЙНОЙ БИП / TRIPLE BEEP /////
-void triple_beep()                                                      // ТРОЙНОЙ БИП
+///// TRIPLE BEEP /////
+void triple_beep()                                                      // TRIPLE BEEP
 {                                                                       //
-  if (button_beep_ON == true)                                           // пищим только если в настройках включен звук клавиш
+  if (button_beep_ON == true)                                           // beep only if button sound is on
   {                                                                     //
     playTone(1800,40);                                                    //
     beepDelay(80);                                                          //
@@ -689,10 +689,10 @@ void triple_beep()                                                      // ТР�
   }                                                                     //
 }                                                                       //
 
-///// КОРОТКИЙ-КОРОТКИЙ-ДЛИННЫЙ БИП / SHORT-SHORT-LONG BEEP /////
-void SSL_beep()                                                         // КОРОТКИЙ-КОРОТКИЙ-ДЛИННЫЙ БИП
+///// SHORT-SHORT-LONG BEEP /////
+void SSL_beep()                                                         // SHORT-SHORT-LONG BEEP
 {                                                                       //
-  if (button_beep_ON == true)                                           // пищим только если в настройках включен звук клавиш
+  if (button_beep_ON == true)                                           // beep only if button sound is on
   {                                                                     //
     playTone(1800,40);                                                    //
     beepDelay(80);                                                          //
@@ -704,34 +704,34 @@ void SSL_beep()                                                         // КО�
   }
 }
 
-///// ОСНОВНОЕ МЕНЮ / MAIN MENU /////
+///// MAIN MENU /////
 void Menu()                                                                       //
 {                                                                                 //
-  if (askSave == true)                                                            // экран вопроса о сохранении настроек
+  if (askSave == true)                                                            // save settings question screen
     {
       lcd.setCursor(0,0);                                                           //
       lcd.print("Save settings?  ");                                                //
       lcd.setCursor(0,1);                                                           //
-      if (saveChoice == true) {lcd.print("  > YES     no  ");}                      // выбран ответ YES
-      else                    {lcd.print("    yes   > NO  ");}                      // выбран ответ NO
+      if (saveChoice == true) {lcd.print("  > YES     no  ");}                      // YES selected
+      else                    {lcd.print("    yes   > NO  ");}                      // NO selected
       return;                                                                       //
     }
 
   lcd.setCursor(0,0);                                                             //
-  lcd.print("MENU "+String(menuCount+1)+"   ");                                   // выводим надпись MAIN MENU и номер окна меню на верхней строчке
-    if (menuCount == 0) {SeaPresChange();}                                        // 1 экран меню - давление по морю / высота
-    else if (menuCount == 1) {TresholdUP();}                                      // 2 экран меню - порог срабатывания на подъёме
-    else if (menuCount == 2) {TresholdDN();}                                      // 3 экран меню - порог срабатывания на снижении
-    else if (menuCount == 3) {LED_light();}                                       // 4 экран меню - ВКЛ/ВЫКЛ светодиодов
-    else if (menuCount == 4) {ButtonBeep();}                                      // 5 экран меню - ВКЛ/ВЫКЛ звука клавиш
-    else if (menuCount == 5) {VolumeSet();}                                       // 6 экран меню - громкость пищалки
-    else if (menuCount == 6) {Response();}                                        // 7 экран меню - скорость реакции вариометра
-    else if (menuCount == 7) {AvgTime();}                                         // 8 экран меню - время усреднения показаний
-    else if (menuCount == 8) {AutoStartSet();}                                     // 9 экран меню - автоопределение старта
+  lcd.print("MENU "+String(menuCount+1)+"   ");                                   // print MENU and the page number on the top line
+    if (menuCount == 0) {SeaPresChange();}                                        // menu page 1 - sea pressure / altitude
+    else if (menuCount == 1) {TresholdUP();}                                      // menu page 2 - climb threshold
+    else if (menuCount == 2) {TresholdDN();}                                      // menu page 3 - sink threshold
+    else if (menuCount == 3) {LED_light();}                                       // menu page 4 - LEDs ON/OFF
+    else if (menuCount == 4) {ButtonBeep();}                                      // menu page 5 - button sound ON/OFF
+    else if (menuCount == 5) {VolumeSet();}                                       // menu page 6 - buzzer volume
+    else if (menuCount == 6) {Response();}                                        // menu page 7 - vario response speed
+    else if (menuCount == 7) {AvgTime();}                                         // menu page 8 - averaging time
+    else if (menuCount == 8) {AutoStartSet();}                                     // menu page 9 - auto take-off detection
 }                                                                                 //
 
-///// УСТАНОВКА ВЫСОТЫ, ИЗ КОТОРОЙ СЧИТАЕТСЯ ДАВЛЕНИЕ / SET ALTITUDE, PRESSURE IS CALCULATED /////
-char nextDigit(char c)              // следующая цифра (после 9 снова 0)
+///// SET ALTITUDE, PRESSURE IS CALCULATED /////
+char nextDigit(char c)              // next digit (after 9 back to 0)
 {
   byte v = int(c);                  //
   v++;                              //
@@ -739,7 +739,7 @@ char nextDigit(char c)              // следующая цифра (после
   return char(v);                   //
 }
 
-void altToDigits(int v)             // раскладываем высоту по четырём символам
+void altToDigits(int v)             // split altitude into four digits
 {
   if (v < 0) {v = 0;}               //
   if (v > 9999) {v = 9999;}         //
@@ -749,7 +749,7 @@ void altToDigits(int v)             // раскладываем высоту п�
   t3 = char(48+v%10);               //
 }
 
-void presToDigits(float v)          // раскладываем давление по пяти символам
+void presToDigits(float v)          // split pressure into five characters
 {
   presSTR = presToStr(v);           //
   s0 = presSTR[0];                  //
@@ -760,14 +760,14 @@ void presToDigits(float v)          // раскладываем давление
 }
 
 
-///// ПРОЦЕДУРА ИЗМЕНЕНИЯ ЗНАЧЕНИЯ ДАВЛЕНИЯ ПО МОРЮ / SEA PRESSURE VALUE CHANGE PROCEDURE /////
-void SeaPresChange()                                                              // объединённая страница: давление по морю / высота
+///// SEA PRESSURE VALUE CHANGE PROCEDURE /////
+void SeaPresChange()                                                              // combined page: sea pressure / altitude
 {
-  if (altMode == false)                                                           // ===== РЕЖИМ "ДАВЛЕНИЕ" =====
+  if (altMode == false)                                                           // ===== "PRESSURE" MODE =====
     {
-      if (presChange == true)                                                     // если идёт ввод...
+      if (presChange == true)                                                     // if editing...
         {
-          if (B3Pres == true)                                                     // ... и нажата кнопка 3, меняем выбранную цифру
+          if (B3Pres == true)                                                     // ... and button 3 pressed, change the selected digit
             {
               if (symCount == 0) {s0 = nextDigit(s0);}                            //
               if (symCount == 1) {s1 = nextDigit(s1);}                            //
@@ -776,31 +776,31 @@ void SeaPresChange()                                                            
               if (symCount == 5) {s4 = nextDigit(s4);}                            //
               B3Pres = false;                                                     //
             }
-          presSTR = (String)s0+s1+s2+s3+"."+s4;                                   // собираем строку давления
+          presSTR = (String)s0+s1+s2+s3+"."+s4;                                   // build the pressure string
           presTMP = presSTR.toFloat();                                            //
-          presSea = presTMP;                                                      // сразу применяем - высота пересчитывается мгновенно
+          presSea = presTMP;                                                      // apply immediately - altitude updates instantly
           lcd.setCursor(10,0);                                                    //
-          lcd.print("     ");                                                     // стираем старый курсор
+          lcd.print("     ");                                                     // erase the old cursor
           lcd.setCursor((10+symCount),0);                                         //
-          lcd.print("v");                                                         // рисуем курсор над выбранной цифрой
+          lcd.print("v");                                                         // draw the cursor over the selected digit
         }
-      else                                                                        // если ввод выключен - показываем текущее давление
+      else                                                                        // if not editing - show current pressure
         {
-          presToDigits(presSea);                                                  // обновляем цифры из presSea (могли поменять через высоту)
+          presToDigits(presSea);                                                  // refresh digits from presSea (may have changed via altitude)
           presTMP = presSea;                                                      //
           lcd.setCursor(10,0);                                                    //
-          lcd.print("      ");                                                    // стираем курсор
+          lcd.print("      ");                                                    // erase the cursor
         }
       lcd.setCursor(0,1);                                                         //
-      lcd.print("Sea pres. ");                                                    // рисуем строку "Sea pres."
+      lcd.print("Sea pres. ");                                                    // draw "Sea pres."
       lcd.setCursor(10,1);                                                        //
-      lcd.print(presSTR);                                                         // выводим давление в hPa
+      lcd.print(presSTR);                                                         // show pressure in hPa
     }
-  else                                                                            // ===== РЕЖИМ "ВЫСОТА" =====
+  else                                                                            // ===== "ALTITUDE" MODE =====
     {
-      if (altChange == true)                                                      // если идёт ввод...
+      if (altChange == true)                                                      // if editing...
         {
-          if (B3Alt == true)                                                      // ... и нажата кнопка 3, меняем выбранную цифру
+          if (B3Alt == true)                                                      // ... and button 3 pressed, change the selected digit
             {
               if (symCount == 0) {t0 = nextDigit(t0);}                            //
               if (symCount == 1) {t1 = nextDigit(t1);}                            //
@@ -808,99 +808,99 @@ void SeaPresChange()                                                            
               if (symCount == 3) {t3 = nextDigit(t3);}                            //
               B3Alt = false;                                                      //
             }
-          altSTR = (String)t0+t1+t2+t3;                                           // собираем строку высоты
+          altSTR = (String)t0+t1+t2+t3;                                           // build the altitude string
           altSet = altSTR.toInt();                                                //
-          presSea = (sensor.pres*MMHG_TO_HPA)*exp(float(altSet)/(29.21*(sensor.temp+273.15)));   // сразу считаем давление из высоты
-          presToDigits(presSea);                                                  // и обновляем цифры давления
+          presSea = (sensor.pres*MMHG_TO_HPA)*exp(float(altSet)/(29.21*(sensor.temp+273.15)));   // calculate pressure from altitude immediately
+          presToDigits(presSea);                                                  // and refresh the pressure digits
           presTMP = presSea;                                                      //
           lcd.setCursor(11,0);                                                    //
-          lcd.print("    ");                                                      // стираем старый курсор
+          lcd.print("    ");                                                      // erase the old cursor
           lcd.setCursor((11+symCount),0);                                         //
-          lcd.print("v");                                                         // рисуем курсор над выбранной цифрой
+          lcd.print("v");                                                         // draw the cursor over the selected digit
         }
-      else                                                                        // если ввод выключен - показываем текущую высоту
+      else                                                                        // if not editing - show current altitude
         {
           altToDigits(altitudeSEA);                                               //
           altSTR = (String)t0+t1+t2+t3;                                           //
           lcd.setCursor(11,0);                                                    //
-          lcd.print("     ");                                                     // стираем курсор
+          lcd.print("     ");                                                     // erase the cursor
         }
       lcd.setCursor(0,1);                                                         //
-      lcd.print("Set alt.   ");                                                   // рисуем строку "Set alt."
+      lcd.print("Set alt.   ");                                                   // draw "Set alt."
       lcd.setCursor(11,1);                                                        //
-      lcd.print(altSTR+"m");                                                      // выводим высоту в метрах
+      lcd.print(altSTR+"m");                                                      // show altitude in metres
     }
 }
 
-///// ПРОЦЕДУРА ВЫБОРА ПОРОГА НА ПОДЪЁМЕ / SETTING TRESHOLD FOR CLIMB /////
+///// SETTING TRESHOLD FOR CLIMB /////
 void TresholdUP()                                                                 //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Tr.hold UP ");                                                       // рисуем строку "Tr.hold UP "
-  lcd.print("     ");                                                             // затираем старые символы
-    if (TresUPchange == true)                                                     // если был факт нажатия КНОПКИ 3, то...
+  lcd.print("Tr.hold UP ");                                                       // draw "Tr.hold UP "
+  lcd.print("     ");                                                             // erase old characters
+    if (TresUPchange == true)                                                     // if button 3 was pressed...
       {                                                                           //
-        vario_up = treshUP[TrUPcount];                                            // присваиваем переменной vario_up (используется в при выводе звука на подъёме) новое значение из массива возможных значений
-        TresUPchange = false;                                                     // убираем факт нажатия КНОПКИ 3
+        vario_up = treshUP[TrUPcount];                                            // set vario_up (used for the climb sound) to the next value from the array
+        TresUPchange = false;                                                     // clear the button 3 press
       }                                                                           // 
   lcd.setCursor(12,1);                                                            // 
-  dtostrf(vario_up, 4, 1, outTrUP);                                               // переводим значение vario_up из float в массив символов для вывода на экран
-  lcd.print(String(outTrUP));                                                     // выводим на экран значение порога срабатывания на подъёме
+  dtostrf(vario_up, 4, 1, outTrUP);                                               // convert vario_up from float to a char array for the screen
+  lcd.print(String(outTrUP));                                                     // show the climb threshold
 }                                                                                 //
 
-///// ПРОЦЕДУРА ВЫБОРА ПОРОГА НА СЛИВЕ / SETTING TRESHOLD FOR DESCENT /////
+///// SETTING TRESHOLD FOR DESCENT /////
 void TresholdDN()                                                                 // 
 {                                                                                 // 
   lcd.setCursor(0,1);                                                             // 
-  lcd.print("Tr.hold DN ");                                                       // рисуем строку "Tr.hold DN "
-  lcd.print("     ");                                                             // затираем старые символы
-    if (TresDNchange == true)                                                     // если был факт нажатия КНОПКИ 3, то...
+  lcd.print("Tr.hold DN ");                                                       // draw "Tr.hold DN "
+  lcd.print("     ");                                                             // erase old characters
+    if (TresDNchange == true)                                                     // if button 3 was pressed...
       {                                                                           //
-        vario_down = treshDN[TrDNcount];                                          // присваиваем переменной vario_down (используется в при выводе звука на сливе) новое значение из массива возможных значений
-        TresDNchange = false;                                                     // убираем факт нажатия КНОПКИ 3
+        vario_down = treshDN[TrDNcount];                                          // set vario_down (used for the sink sound) to the next value from the array
+        TresDNchange = false;                                                     // clear the button 3 press
       }                                                                           // 
   lcd.setCursor(12,1);                                                            // 
-  dtostrf(vario_down, 4, 1, outTrDN);                                             // переводим значение vario_down из float в массив символов для вывода на экран
-  lcd.print(String(outTrDN));                                                     // выводим на экран значение порога срабатывания на сливе
+  dtostrf(vario_down, 4, 1, outTrDN);                                             // convert vario_down from float to a char array for the screen
+  lcd.print(String(outTrDN));                                                     // show the sink threshold
 }                                                                                 //
 
-///// ВКЛ/ВЫКЛ СВЕТОДИОДОВ / LED SETTING ON/OFF /////
+///// OFF /////
 void LED_light()                                                                  //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Light      ");                                                       // рисуем строку "Light"
+  lcd.print("Light      ");                                                       // draw "Light"
   lcd.setCursor(13,1);                                                            //
-    if (LED_ON == true) {lcd.print("ON ");}                                       // если индикация включена, то рисуем ON
-    else {lcd.print("OFF");}                                                      // если выключена, то рисуем OFF
+    if (LED_ON == true) {lcd.print("ON ");}                                       // if LEDs are on, show ON
+    else {lcd.print("OFF");}                                                      // if off, show OFF
 }                                                                                 //
 
-///// ПОДПРОГРАММА ВЫБОРА РЕЖИМА ВАРИОМЕТРА / VARIO MODE SET /////
-///// АВТООПРЕДЕЛЕНИЕ СТАРТА / AUTO TAKE-OFF ON/OFF /////
+///// VARIO MODE SET /////
+///// OFF /////
 void AutoStartSet()                                                               //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Auto start ");                                                       // рисуем строку "Auto start"
+  lcd.print("Auto start ");                                                       // draw "Auto start"
   lcd.setCursor(12,1);                                                            //
   if (AutoStart == true) {lcd.print("  ON");}                                     //
   else {lcd.print(" OFF");}                                                       //
 }                                                                                 //
 
-///// ВРЕМЯ УСРЕДНЕНИЯ ПОКАЗАНИЙ / AVERAGING TIME /////
+///// AVERAGING TIME /////
 void AvgTime()                                                                    //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Average    ");                                                       // рисуем строку "Average"
+  lcd.print("Average    ");                                                       // draw "Average"
   lcd.setCursor(12,1);                                                            //
   if (avgSec[AvgCount] < 10) {lcd.print("  ");}                                   //
   else {lcd.print(" ");}                                                          //
-  lcd.print(avgSec[AvgCount]);                                                    // выводим время усреднения
+  lcd.print(avgSec[AvgCount]);                                                    // show the averaging time
   lcd.print("s");                                                                 //
 }                                                                                 //
 
-///// ГРОМКОСТЬ ПИЩАЛКИ / BUZZER VOLUME /////
-void VolumeSet()                                                                  // страница громкости / базовой частоты
+///// BUZZER VOLUME /////
+void VolumeSet()                                                                  // volume / base frequency page
 {                                                                                 //
-  if (freqMode == false)                                                          // ===== ВИД "ГРОМКОСТЬ" =====
+  if (freqMode == false)                                                          // ===== "VOLUME" VIEW =====
     {
       lcd.setCursor(0,1);                                                         //
       lcd.print("Volume      ");                                                  //
@@ -910,14 +910,14 @@ void VolumeSet()                                                                
       else if (volCount == 2) {lcd.print(" MED");}                                //
       else {lcd.print(" MAX");}                                                   //
       lcd.setCursor(10,0);                                                        //
-      if (volEdit == true) {lcd.print("    v ");}                                 // курсор над значением
+      if (volEdit == true) {lcd.print("    v ");}                                 // cursor over the value
       else {lcd.print("      ");}                                                 //
     }
-  else                                                                            // ===== ВИД "БАЗОВАЯ ЧАСТОТА" =====
+  else                                                                            // ===== "BASE FREQUENCY" VIEW =====
     {
-      if (freqEdit == true)                                                       // если идёт ввод...
+      if (freqEdit == true)                                                       // if editing...
         {
-          if (B3Freq == true)                                                     // ... и нажата кнопка 3, меняем цифру
+          if (B3Freq == true)                                                     // ... and button 3 pressed, change the digit
             {
               if (symCount == 0) {f0 = nextDigit(f0);}                            //
               if (symCount == 1) {f1 = nextDigit(f1);}                            //
@@ -927,9 +927,9 @@ void VolumeSet()                                                                
             }
           freqSTR = (String)f0+f1+f2+f3;                                          //
           lcd.setCursor(10,0);                                                    //
-          lcd.print("      ");                                                    // стираем старый курсор
+          lcd.print("      ");                                                    // erase the old cursor
           lcd.setCursor((10+symCount),0);                                         //
-          lcd.print("v");                                                         // курсор над выбранной цифрой
+          lcd.print("v");                                                         // cursor over the selected digit
         }
       else                                                                        //
         {
@@ -940,11 +940,11 @@ void VolumeSet()                                                                
       lcd.setCursor(0,1);                                                         //
       lcd.print("Base freq ");                                                    //
       lcd.setCursor(10,1);                                                        //
-      lcd.print(freqSTR+"Hz");                                                    // выводим частоту
+      lcd.print(freqSTR+"Hz");                                                    // show the frequency
     }
 }                                                                                 //
 
-void freqToDigits(unsigned int v)   // раскладываем частоту по четырём символам
+void freqToDigits(unsigned int v)   // split the frequency into four digits
 {
   f0 = char(48+(v/1000)%10);        //
   f1 = char(48+(v/100)%10);         //
@@ -953,353 +953,353 @@ void freqToDigits(unsigned int v)   // раскладываем частоту �
   freqSTR = (String)f0+f1+f2+f3;    //
 }
 
-///// РЕЖИМ РАБОТЫ ВАРИОМЕТРА / VARIO MODE SET /////
-///// СКОРОСТЬ РЕАКЦИИ / RESPONSE SPEED SET /////
+///// VARIO MODE SET /////
+///// RESPONSE SPEED SET /////
 void Response()                                                                   //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("Resp ");                                                             // рисуем строку "Resp"
-  lcd.print(RespCount+1);                                                         // выводим уровень 1...5
+  lcd.print("Resp ");                                                             // draw "Resp"
+  lcd.print(RespCount+1);                                                         // show level 1...5
   lcd.setCursor(10,1);                                                            //
-  float win = (tim[maxsamples] - tim[maxsamples-samples]) / 1000.0;                // реальное окно усреднения, сек
+  float win = (tim[maxsamples] - tim[maxsamples-samples]) / 1000.0;                // real averaging window, seconds
   if (win < 0) {win = 0;}                                                         //
   if (win < 10) {lcd.print(" ");}                                                 //
-  lcd.print(win,1);                                                               // выводим окно в секундах
+  lcd.print(win,1);                                                               // show the window in seconds
   lcd.print("s ");                                                                //
 }                                                                                 //
 
-///// ВКЛ/ВЫКЛ ЗВУКА КЛАВИШ / BUTTON BEEP ON/OFF /////
+///// OFF /////
 void ButtonBeep()                                                                 //
 {                                                                                 //
   lcd.setCursor(0,1);                                                             //
-  lcd.print("But. sound ");                                                       // рисуем строку "Button sound"
+  lcd.print("But. sound ");                                                       // draw "Button sound"
   lcd.setCursor(13,1);                                                            //
-  if (button_beep_ON == true) {lcd.print("ON ");}                                 // если звук включен, то на экране рисуем значение ON
-  else {lcd.print("OFF");}                                                        // если выключен, то рисуем значение OFF
+  if (button_beep_ON == true) {lcd.print("ON ");}                                 // if sound is on, show ON
+  else {lcd.print("OFF");}                                                        // if off, show OFF
 }                                                                                 //
 
-///// ГЛАВНЫЙ ЦИКЛ / MAIN CYCLE /////
+///// MAIN CYCLE /////
 void loop()                                                                               //
 {                                                                                         //
-toneService();                                                          // выключаем звук, когда пришло время
-if (sensor.read(3))                                                                       // проверка на наличие данных с датчика 
-{                                                                                         // чтение параметров с датчика bmp180. в скобках могут быть значения чувствительности от 0 до 3. 3 - максимум 
-if (vario>-0.3) {Alarm = false;}                                                          // проверка ВКЛ/ВЫКЛ сигнала тревоги при падении
+toneService();                                                          // stop the sound when it is time
+if (sensor.read(3))                                                                       // check for data from the sensor
+{                                                                                         // read the bmp180. Accuracy 0 to 3 in the brackets, 3 is maximum
+if (vario>-0.3) {Alarm = false;}                                                          // check fall alarm ON/OFF
 
-///// ОБРАБОТКА СОБЫТИЙ НА КНОПКЕ 1 / BUTTON 1 SHORT PRESS /////
-if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 1 нажата и не было зарегистрировано длительное нажатие (короче, это короткий клик)
+///// BUTTON 1 SHORT PRESS /////
+if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress == false))   // if there was an event, BUTTON 1 is pressed and no long press registered (a short click)
   {                                                                                       //
-    button_beep();                                                                        // сигнал при нажатии клавиши
-    if (askLanded == true)                                                                // если показан вопрос о посадке...
+    button_beep();                                                                        // button press beep
+    if (askLanded == true)                                                                // if the landing question is shown...
       {
-        if (landChoice == true) {landChoice = false;}                                     // ... двигаем выбор YES/NO
+        if (landChoice == true) {landChoice = false;}                                     // ... move the YES/NO choice
         else {landChoice = true;}                                                         //
       }
-    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
+    else if (MainMenu == false)                                                           // ... and if we are not in the MENU ...
       {                                                                                   //
-        MainMenu = true;                                                                  // то включается режим меню
-        backupSettings();                                                         // запоминаем настройки, что бы ответ NO мог их вернуть
-          s0 = presSTR[0];                                                                // присваиваем строке s0 первый символ в значении давления
-          s1 = presSTR[1];                                                                // присваиваем строке s1 второй символ в значении давления
-          s2 = presSTR[2];                                                                // присваиваем строке s2 третий символ в значении давления
-          s3 = presSTR[3];                                                                // присваиваем строке s3 четвертый символ в значении давления
-          s4 = presSTR[5];                                                                // присваиваем строке s4 пятый символ в значении давления
-        beep_ON = false;                                                                  // выключаем флаг beep_ON (то есть, в МЕНЮ не работает звук вариометра)
-        lcd.clear();                                                                      // очистка экрана при нажатии кнопки
+        MainMenu = true;                                                                  // menu mode turns on
+        backupSettings();                                                         // remember settings so that NO can restore them
+          s0 = presSTR[0];                                                                // s0 = first pressure character
+          s1 = presSTR[1];                                                                // s1 = second pressure character
+          s2 = presSTR[2];                                                                // s2 = third pressure character
+          s3 = presSTR[3];                                                                // s3 = fourth pressure character
+          s4 = presSTR[5];                                                                // s4 = fifth pressure character
+        beep_ON = false;                                                                  // turn off beep_ON (vario sound does not work in the MENU)
+        lcd.clear();                                                                      // clear screen on button press
       }                                                                                   //
-    else                                                                                  // ... если мы уже в меню
+    else                                                                                  // ... if we are already in the menu
       {
-        if (askSave == true)                                                              // если показан вопрос о сохранении...
+        if (askSave == true)                                                              // if the save question is shown...
           {
-            if (saveChoice == true) {saveChoice = false;}                                 // ... переключаем ответ YES/NO
+            if (saveChoice == true) {saveChoice = false;}                                 // ... toggle YES/NO
             else {saveChoice = true;}                                                     //
           }
-        else if ((presChange == false) && (altChange == false) && (volEdit == false) && (freqEdit == false))                           // иначе листаем страницы меню НАЗАД
+        else if ((presChange == false) && (altChange == false) && (volEdit == false) && (freqEdit == false))                           // otherwise go BACK one menu page
           {
-            if (menuCount == 0) {menuCount = 9;}                                          // с первой страницы переходим на последнюю
+            if (menuCount == 0) {menuCount = 9;}                                          // from the first page go to the last
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
       }
   }                                                                                       //
 
-///// ДЛИННОЕ НАЖАТИЕ КНОПКИ 1 / BUTTON 1 LONG PRESS /////
-if (Buttom1.click())                                                                      // если кнопка 1 зажата больше 1 секунды, то... (это длинный клик)
+///// BUTTON 1 LONG PRESS /////
+if (Buttom1.click())                                                                      // if button 1 is held for more than 1 second... (long press)
   {                                                                                       //
-    long_beep();                                                                          // длинный бип
-    if (askLanded == true) {}                                                             // во время вопроса о посадке длинные нажатия не работают
-    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
+    long_beep();                                                                          // long beep
+    if (askLanded == true) {}                                                             // long presses do nothing during the landing question
+    else if (MainMenu == false)                                                           // ... and if we are not in the MENU ...
       {                                                                                   //
-        lcd.setCursor(13,0);                                                              // ОБНУЛЯЕМ ВРЕМЯ по длительному нажатию КЛАВИШИ 1
-        lcd.print("   ");                                                                 // затираем старое значение времени
-        timeZero = millis();                                                              // присвоение значения переменной для обнуления времени      
-        flightMs = 0;                                                                     // обнуляем показание таймера полёта
+        lcd.setCursor(13,0);                                                              // RESET TIME with a long press of BUTTON 1
+        lcd.print("   ");                                                                 // erase the old time value
+        timeZero = millis();                                                              // set the variable used to reset the time
+        flightMs = 0;                                                                     // reset the flight timer display
       }                                                                                   // 
-    else                                                                                  // ... если мы в меню
+    else                                                                                  // ... if we are in the menu
       {
-        if (askSave == false)                                                             // спрашиваем, сохранять ли настройки
+        if (askSave == false)                                                             // ask whether to save settings
           {
-            askSave = true;                                                               // включаем экран вопроса
-            saveChoice = true;                                                            // по умолчанию - YES
+            askSave = true;                                                               // show the question screen
+            saveChoice = true;                                                            // default - YES
             lcd.clear();                                                                  //
           }
       }
-    longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
+    longpress = true;                                                                     // set to true, i.e. a long press happened
   }                                                                                       //
-if (b1.fell() == 1) {longpress = false;}                                                  // убираем факт длительного нажатия при отпускании книпки
-Buttom1.release();                                                                        // обязательно надо прописывать после выполнения click(), иначе выполнится только раз
+if (b1.fell() == 1) {longpress = false;}                                                  // clear the long press flag when the button is released
+Buttom1.release();                                                                        // must be written after click(), otherwise it runs only once
 
-///// ОБРАБОТКА СОБЫТИЙ НА КНОПКЕ 2 / BUTTON 2 SHORT PRESS /////
-if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 2 нажата и не было зарегистрировано длительное нажатие (короткий клик)
+///// BUTTON 2 SHORT PRESS /////
+if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress == false))   // if there was an event, BUTTON 2 is pressed and no long press registered (short click)
   {                                                                                       //
-    button_beep();                                                                        // сигнал при нажатии клавиши
-    lcd.clear();                                                                          // очистка экрана при нажатии кнопки
-    if (askLanded == true)                                                                // если показан вопрос о посадке...
+    button_beep();                                                                        // button press beep
+    lcd.clear();                                                                          // clear screen on button press
+    if (askLanded == true)                                                                // if the landing question is shown...
       {
-        if (landChoice == true) {landChoice = false;}                                     // ... двигаем выбор YES/NO
+        if (landChoice == true) {landChoice = false;}                                     // ... move the YES/NO choice
         else {landChoice = true;}                                                         //
       }
-    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
+    else if (MainMenu == false)                                                           // ... and if we are not in the MENU ...
       {                                                                                   // 
-        if (windowCount == 0)                                                             // если мы в первом главном экране
+        if (windowCount == 0)                                                             // if we are on the first main screen
           {                                                                               //
-            cnt+=1;                                                                       // увеличиваем значение счётчика на единицу
-            if (cnt==7)                                                                   // если значение счётчика дошло до 7, то...
-              {                                                                           // ... присваиваем ему значение 4
-                cnt=4;                                                                    // используются значения от 4 до 6, поскольку номера символов высоты идут от 4 до 6
+            cnt+=1;                                                                       // increase the counter by one
+            if (cnt==7)                                                                   // if the counter reached 7...
+              {                                                                           // ... set it to 4
+                cnt=4;                                                                    // values 4 to 6 are used because the altitude symbols are numbered 4 to 6
               }                                                                           //
           }                                                                               //
       }                                                                                   //
-    else if (askSave == true)                                                         // если показан вопрос о сохранении...
+    else if (askSave == true)                                                         // if the save question is shown...
       {
-        if (saveChoice == true) {saveChoice = false;}                                 // переключаем ответ YES/NO
+        if (saveChoice == true) {saveChoice = false;}                                 // toggle YES/NO
         else {saveChoice = true;}                                                     //
       }
     else
       {                                                                                   //
-        if (presChange == true)                                                           // если идёт ввод давления...
+        if (presChange == true)                                                           // if editing pressure...
           {                                                                               //
-            symCount += 1;                                                                // ... двигаем курсор по цифрам давления
-            if (symCount == 4) {symCount += 1;}                                           // пропускаем позицию точки
-            if (symCount == 6) {symCount = 0;}                                            // после последней цифры - снова первая
+            symCount += 1;                                                                // ... move the cursor over the pressure digits
+            if (symCount == 4) {symCount += 1;}                                           // skip the decimal point position
+            if (symCount == 6) {symCount = 0;}                                            // after the last digit - back to the first
           }                                                                               //
-        else if (freqEdit == true)                                                        // если идёт ввод частоты...
+        else if (freqEdit == true)                                                        // if editing frequency...
           {                                                                               //
-            symCount += 1;                                                                // ... двигаем курсор по цифрам частоты
+            symCount += 1;                                                                // ... move the cursor over the frequency digits
             if (symCount == 4) {symCount = 0;}                                            //
           }                                                                               //
-        else if (volEdit == true) {}                                                      // при настройке громкости не листаем
-        else if (altChange == true)                                                       // если идёт ввод высоты...
+        else if (volEdit == true) {}                                                      // no paging while setting volume
+        else if (altChange == true)                                                       // if editing altitude...
           {                                                                               //
-            symCount += 1;                                                                // ... двигаем курсор по цифрам высоты
-            if (symCount == 4) {symCount = 0;}                                            // после последней цифры - снова первая
+            symCount += 1;                                                                // ... move the cursor over the altitude digits
+            if (symCount == 4) {symCount = 0;}                                            // after the last digit - back to the first
           }                                                                               //
-        else                                                                              // иначе листаем страницы меню
+        else                                                                              // otherwise go to the next menu page
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 9) {menuCount = 0;}                                         // после последней страницы - снова первая
+            if (menuCount == 9) {menuCount = 0;}                                         // after the last page - back to the first
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
 
-///// ДЛИННОЕ НАЖАТИЕ КНОПКИ 2 / BUTTON 2 LONG PRESS /////
-if (Buttom2.click())                                                                      // если кнопка 2 зажата больше 1 секунды, то... (длинный клик)
+///// BUTTON 2 LONG PRESS /////
+if (Buttom2.click())                                                                      // if button 2 is held for more than 1 second... (long press)
   {                                                                                       // 
-    SSL_beep();                                                                           // вызов функции КОРОТКОГО-КОРОТКОГО-ДЛИННОГО ПИСКА
-    if (askLanded == true) {}                                                             // во время вопроса о посадке длинные нажатия не работают
-    else if (MainMenu == false)                                                           // ... и если мы не в МЕНЮ ...
-      {                                                                                   // ОБНУЛЕНИЕ ВЫСОТ ДЛИННЫМ НАЖАТИЕМ КНИПКИ 2
-        if (cnt == 4)                                                                     // действие для ВЫСОТЫ по давлению на УРОВНЕ МОРЯ (обнуление высоты)
+    SSL_beep();                                                                           // call the SHORT-SHORT-LONG BEEP
+    if (askLanded == true) {}                                                             // long presses do nothing during the landing question
+    else if (MainMenu == false)                                                           // ... and if we are not in the MENU ...
+      {                                                                                   // RESET ALTITUDES with a long press of BUTTON 2
+        if (cnt == 4)                                                                     // action for SEA LEVEL altitude (zeroing)
           {                                                                               //
-            altSEATmp = altitudeSEA;                                                      // присвоение переменной altSEATmp значения расчётной высоты
-            presSea = sensor.pres*MMHG_TO_HPA;   // давление в мм рт. ст. -> hPa
-            presSTR = presToStr(presSea);                                                    // печатаем значение давления в переменную строки для отображения в МЕНЮ
-            saveSettings();                                                               // сохраняем давление в память
+            altSEATmp = altitudeSEA;                                                      // set altSEATmp to the calculated altitude
+            presSea = sensor.pres*MMHG_TO_HPA;   // pressure mmHg -> hPa
+            presSTR = presToStr(presSea);                                                    // print the pressure into the string shown in the MENU
+            saveSettings();                                                               // save pressure to memory
           }                                                                               //
-        if (cnt == 5)                                                                     // действие для ВЫСОТЫ на СТАРТЕ (обнуление высоты)
+        if (cnt == 5)                                                                     // action for TAKE-OFF altitude (zeroing)
           {                                                                               //
-            altTmp = sensor.alti;                                                         // присвоение переменной altTmp значения высоты с датчика
+            altTmp = sensor.alti;                                                         // set altTmp to the sensor altitude
           }                                                                               //
-        if (cnt == 6)                                                                     // действие для ДОПОЛНИТЕЛЬНОЙ ВЫСОТЫ (обнуление высоты)
+        if (cnt == 6)                                                                     // action for EXTRA altitude (zeroing)
           {                                                                               //
-            altTmpAdd = sensor.alti;                                                      // присвоение переменной altTmpAdd значения высоты с датчика
+            altTmpAdd = sensor.alti;                                                      // set altTmpAdd to the sensor altitude
           }                                                                               //
-        AltDifTmpFlag = true;                                                             // переводим флаг, был сброс высоты
+        AltDifTmpFlag = true;                                                             // set the flag: altitude was reset
       }                                                                                   //
-    else if (askSave == false)                                                                                  // ... если мы, всё-таки, в МЕНЮ ...
+    else if (askSave == false)                                                                                  // ... if we are in the MENU after all ...
       {                                                                                   //
-        if (menuCount == 5)                                                               // на странице громкости / базовой частоты
+        if (menuCount == 5)                                                               // on the volume / base frequency page
           {                                                                               //
-            if (freqMode == false)                                                        // --- вид "громкость" ---
+            if (freqMode == false)                                                        // --- "volume" view ---
               {                                                                           //
-                if (volEdit == false) {volEdit = true;}                                   // начинаем настройку
-                else {volEdit = false; playTone(baseFreq,300); beepDelay(300);}           // заканчиваем, пробный сигнал
+                if (volEdit == false) {volEdit = true;}                                   // start setting
+                else {volEdit = false; playTone(baseFreq,300); beepDelay(300);}           // finish, test beep
                 lcd.clear();                                                              //
               }                                                                           //
-            else                                                                          // --- вид "базовая частота" ---
+            else                                                                          // --- "base frequency" view ---
               {                                                                           //
                 if (freqEdit == false)                                                    //
                   {                                                                       //
-                    freqEdit = true;                                                      // начинаем ввод частоты
+                    freqEdit = true;                                                      // start entering frequency
                     freqToDigits(baseFreq);                                               //
                     symCount = 0;                                                         //
                   }                                                                       //
                 else                                                                      //
                   {                                                                       //
-                    freqEdit = false;                                                     // заканчиваем ввод
+                    freqEdit = false;                                                     // finish entering
                     int v = freqSTR.toInt();                                              //
-                    if (v < FREQ_MIN) {v = FREQ_MIN;}                                     // ограничиваем диапазон
+                    if (v < FREQ_MIN) {v = FREQ_MIN;}                                     // limit the range
                     if (v > FREQ_MAX) {v = FREQ_MAX;}                                     //
                     baseFreq = v;                                                         //
                     freqToDigits(baseFreq);                                               //
                     symCount = 0;                                                         //
-                    playTone(baseFreq,300);                                               // пробный сигнал новой частоты
+                    playTone(baseFreq,300);                                               // test beep at the new frequency
                     beepDelay(300);                                                       //
                   }                                                                       //
                 lcd.clear();                                                              //
               }                                                                           //
           }                                                                               //
-        if (menuCount == 0)                                                               // на первой странице - ввод давления или высоты
+        if (menuCount == 0)                                                               // on the first page - enter pressure or altitude
           {                                                                               //
-            if (altMode == false)                                                         // --- режим "давление" ---
+            if (altMode == false)                                                         // --- "pressure" mode ---
               {                                                                           //
                 if (presChange == false)                                                  //
                   {                                                                       //
-                    presChange = true;                                                    // включаем ввод давления
+                    presChange = true;                                                    // start pressure entry
                     presToDigits(presSea);                                                //
                     presTMP = presSea;                                                    //
                     symCount = 0;                                                         //
                   }                                                                       //
                 else                                                                      //
                   {                                                                       //
-                    presChange = false;                                                   // заканчиваем ввод
+                    presChange = false;                                                   // finish entering
                     presSea = presTMP;                                                    //
                     symCount = 0;                                                         //
                     altSEATmp = 0;                                                        //
                   }                                                                       //
               }                                                                           //
-            else                                                                          // --- режим "высота" ---
+            else                                                                          // --- "altitude" mode ---
               {                                                                           //
                 if (altChange == false)                                                   //
                   {                                                                       //
-                    altChange = true;                                                     // включаем ввод высоты
-                    altToDigits(altitudeSEA);                                             // начинаем с текущей высоты над уровнем моря
+                    altChange = true;                                                     // start altitude entry
+                    altToDigits(altitudeSEA);                                             // start from the current altitude above sea level
                     symCount = 0;                                                         //
                   }                                                                       //
                 else                                                                      //
                   {                                                                       //
-                    altChange = false;                                                    // заканчиваем ввод
+                    altChange = false;                                                    // finish entering
                     symCount = 0;                                                         //
                     altSEATmp = 0;                                                        //
                   }                                                                       //
               }                                                                           //
           }                                                                               //
       }                                                                                   //
-    longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
-    lcd.clear();                                                                          // очистка экрана
+    longpress = true;                                                                     // set to true, i.e. a long press happened
+    lcd.clear();                                                                          // clear screen
   }                                                                                       // 
-if (b2.fell() == 1) {longpress = false;}                                                  // убираем факт длительного нажатия при отпускании книпки
-Buttom2.release();                                                                        // обязательно надо прописывать после выполнения click(), иначе выполнится только раз
+if (b2.fell() == 1) {longpress = false;}                                                  // clear the long press flag when the button is released
+Buttom2.release();                                                                        // must be written after click(), otherwise it runs only once
 
-///// ОБРАБОТКА СОБЫТИЙ НА КНОПКЕ 3 / BUTTON 3 SHORT PRESS /////
-if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress == false))   // если зарегистрировано событие и КНОПКА 3 нажата и не было зарегистрировано длительное нажатие (короткий клик)
+///// BUTTON 3 SHORT PRESS /////
+if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress == false))   // if there was an event, BUTTON 3 is pressed and no long press registered (short click)
   {                                                                                       //
-    button_beep();                                                                        // сигнал при нажатии клавиши
-    if (askLanded == true)                                                                // если показан вопрос о посадке...
+    button_beep();                                                                        // button press beep
+    if (askLanded == true)                                                                // if the landing question is shown...
       {
-        if (landChoice == true) {landed();}                                               // YES - заканчиваем полёт
-        else                                                                              // NO - продолжаем полёт
+        if (landChoice == true) {landed();}                                               // YES - end the flight
+        else                                                                              // NO - keep flying
           {
             askLanded = false;                                                            //
-            landDismiss = true;                                                           // не спрашиваем снова, пока не появится движение
+            landDismiss = true;                                                           // do not ask again until there is movement
             quietTime = 0;                                                                //
             lcd.clear();                                                                  //
           }
       }
-    else if (MainMenu == false)                                                           // ... если мы не в МЕНЮ, то...
+    else if (MainMenu == false)                                                           // ... if we are not in the MENU...
       {                                                                                   // 
-        windowCount++;                                                                    // ... переключаем главные экраны (в данной строке увеличиваем счётчик экрана)
-        if (windowCount == 4)                                                             // если счётчик дошёл до трёх, то...
-          {windowCount = 0;}                                                              // ... обнуляем
-        lcd.clear();                                                                      // очищаем экран при каждом переключении
+        windowCount++;                                                                    // ... switch main screens (increase the screen counter)
+        if (windowCount == 4)                                                             // if the counter reached the limit...
+          {windowCount = 0;}                                                              // ... reset it
+        lcd.clear();                                                                      // clear the screen on every switch
       }                                                                                   // 
-    else if (askSave == true)                                                         // если показан вопрос о сохранении...
+    else if (askSave == true)                                                         // if the save question is shown...
       {
-        exitMenu();                                                               // ... выполняем ответ и выходим из меню
+        exitMenu();                                                               // ... apply the answer and leave the menu
       }
     else
       {                                                                                   // 
-        if (presChange == true)                                                           // ... если также включен режим редактирования давления, то
+        if (presChange == true)                                                           // ... if pressure editing is also on
           {                                                                               //
-            B3Pres = true;                                                                // фиксируем факт нажатия КНОПКИ 3 (используется в подпрограмме SeaPresChange() для увеличения значения выбранного символа)
+            B3Pres = true;                                                                // register the BUTTON 3 press (used in SeaPresChange() to increase the selected digit)
           }                                                                               //
-        if (altChange == true)                                                             // ... если включён режим ввода высоты
+        if (altChange == true)                                                             // ... if altitude entry is on
           {                                                                               //
-            B3Alt = true;                                                                 // отмечаем факт нажатия кнопки 3
+            B3Alt = true;                                                                 // register the button 3 press
           }                                                                               //
-        if ((menuCount == 0) && (presChange == false) && (altChange == false))             // на первой странице вне режима ввода...
+        if ((menuCount == 0) && (presChange == false) && (altChange == false))             // on the first page, not editing...
           {                                                                               //
-            if (altMode == true) {altMode = false;}                                       // ... кнопка 3 переключает: давление <-> высота
+            if (altMode == true) {altMode = false;}                                       // ... button 3 switches: pressure <-> altitude
             else {altMode = true;}                                                        //
             symCount = 0;                                                                 //
             lcd.clear();                                                                  //
           }                                                                               //
-        if (menuCount == 1)                                                               // ...если мы в режиме порога срабатывания на подъёме
+        if (menuCount == 1)                                                               // ...if we are on the climb threshold page
           {                                                                               //
             TresUPchange = true;                                                          //
             TrUPcount++;                                                                  //
             if (TrUPcount == 5) {TrUPcount = 0;}                                          //
           }                                                                               //
-        if (menuCount == 2)                                                               // ...если мы в режиме порога срабатывания на снижении
+        if (menuCount == 2)                                                               // ...if we are on the sink threshold page
           {                                                                               //
             TresDNchange = true;                                                          //
             TrDNcount++;                                                                  //
             if (TrDNcount == 5) {TrDNcount = 0;}                                          //
           }                                                                               //
-        if (menuCount == 3)                                                               // ...если мы в режиме ВКЛ/ВЫКЛ светодиодов
+        if (menuCount == 3)                                                               // ...if we are on the LEDs ON/OFF page
           {                                                                               //
             if (LED_ON == true) {LED_ON = false;}                                         //
             else {LED_ON = true;}                                                         //
           }                                                                               //
-        if (menuCount == 4)                                                               // ...если мы в режиме ВКЛ/ВЫКЛ звука клавиш
+        if (menuCount == 4)                                                               // ...if we are on the button sound ON/OFF page
           {                                                                               //
             if (button_beep_ON == true) {button_beep_ON = false;}                         //
             else {button_beep_ON = true;}                                                 //
           }                                                                               //
-        if (menuCount == 5)                                                               // ...если мы на странице громкости / базовой частоты
+        if (menuCount == 5)                                                               // ...if we are on the volume / base frequency page
           {                                                                               //
-            if (volEdit == true)                                                          // идёт настройка громкости...
+            if (volEdit == true)                                                          // setting volume...
               {                                                                           //
                 volCount++;                                                               //
-                if (volCount == 4) {volCount = 0;}                                        // после MAX снова OFF
-                playTone(baseFreq,150);                                                   // пробный сигнал на новой громкости
+                if (volCount == 4) {volCount = 0;}                                        // after MAX back to OFF
+                playTone(baseFreq,150);                                                   // test beep at the new volume
                 beepDelay(150);                                                           //
               }                                                                           //
-            else if (freqEdit == true) {B3Freq = true;}                                   // идёт ввод частоты - меняем цифру
-            else                                                                          // иначе переключаем вид: громкость <-> частота
+            else if (freqEdit == true) {B3Freq = true;}                                   // entering frequency - change the digit
+            else                                                                          // otherwise switch view: volume <-> frequency
               {                                                                           //
                 if (freqMode == true) {freqMode = false;}                                 //
                 else {freqMode = true;}                                                   //
                 lcd.clear();                                                              //
               }                                                                           //
           }                                                                               //
-        if (menuCount == 6)                                                               // ...если мы в режиме выбора работы вариометра
+        if (menuCount == 6)                                                               // ...if we are on the response page
           {                                                                               //
             RespCount++;                                                                  //
-            if (RespCount == 5) {RespCount = 0;}                                          // после последнего уровня - снова первый
-            applyResponse();                                                              // применяем новую скорость реакции
+            if (RespCount == 5) {RespCount = 0;}                                          // after the last level - back to the first
+            applyResponse();                                                              // apply the new response speed
           }                                                                               //
-        if (menuCount == 7)                                                               // ...если мы в режиме времени усреднения
+        if (menuCount == 7)                                                               // ...if we are on the averaging time page
           {                                                                               //
             AvgCount++;                                                                   //
-            if (AvgCount == 5) {AvgCount = 0;}                                            // после последнего значения - снова первое
-            avgFill = 0;                                                                  // начинаем накопление заново
+            if (AvgCount == 5) {AvgCount = 0;}                                            // after the last value - back to the first
+            avgFill = 0;                                                                  // start collecting again
           }                                                                               //
-        if (menuCount == 8)                                                               // ...если мы в режиме автоопределения старта
+        if (menuCount == 8)                                                               // ...if we are on the auto take-off page
           {                                                                               //
             if (AutoStart == true) {AutoStart = false;}                                   //
             else {AutoStart = true;}                                                      //
-            inFlight = false;                                                             // начинаем определение заново
+            inFlight = false;                                                             // start detection again
             askLanded = false;                                                            //
             varioTime = 0;                                                                //
             quietTime = 0;                                                                //
@@ -1308,86 +1308,86 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
       }                                                                                   //
   }                                                                                       //
 
-///// ДЛИННОЕ НАЖАТИЕ КНОПКИ 3 / BUTTON 3 LONG PRESS /////
-if (Buttom3.click())                                                                      // если кнопка 3 зажата больше 1 секунды, то... (длительное нажатие)
+///// BUTTON 3 LONG PRESS /////
+if (Buttom3.click())                                                                      // if button 3 is held for more than 1 second... (long press)
   {                                                                                       //
-    triple_beep();                                                                        // вызов функции ТРОЙНОГО ПИСКА
-    if (askLanded == true) {}                                                             // во время вопроса о посадке длинные нажатия не работают
-    else if (MainMenu == false)                                                           // ... если мы не в МЕНЮ...
+    triple_beep();                                                                        // call the TRIPLE BEEP
+    if (askLanded == true) {}                                                             // long presses do nothing during the landing question
+    else if (MainMenu == false)                                                           // ... if we are not in the MENU...
       {
-        if (windowCount == 0)                                                             // если мы в первом главном окне
-          {                                                                               // ОТКЛЮЧАЕМ/ВКЛЮЧАЕМ звук вариометра
-            if (beep_ON == true) {beep_ON = false;}                                       // если звук включен, то выключаем
-            else {beep_ON = true;}                                                        // иначе включаем
-            soundManual = true;                                                            // дальше звуком управляет пилот, а не автомат
+        if (windowCount == 0)                                                             // if we are on the first main screen
+          {                                                                               // TURN vario sound OFF/ON
+            if (beep_ON == true) {beep_ON = false;}                                       // if sound is on, turn it off
+            else {beep_ON = true;}                                                        // otherwise turn it on
+            soundManual = true;                                                            // from now on the pilot controls the sound, not the automatic
           }                                                                               //
-        if (windowCount == 1)                                                             // если мы во втором главном окне
-          {                                                                               // ОБНУЛЕНИЕ МАКСИМАЛЬНЫХ ЗНАЧЕНИЙ ВЫСОТ
-            lcd.clear();                                                                  // чистим экран
-            maxAltSea = 0;                                                                // сбрасываем на ноль максимальную высоту над морем
-            maxAltStt = 0;                                                                // сбрасываем на ноль максимальную высоту над стартом
-            maxAltAdd = 0;                                                                // сбрасываем на ноль максимальную дополнительную высоту
+        if (windowCount == 1)                                                             // if we are on the second main screen
+          {                                                                               // RESET MAXIMUM ALTITUDES
+            lcd.clear();                                                                  // clear the screen
+            maxAltSea = 0;                                                                // reset maximum altitude above sea level
+            maxAltStt = 0;                                                                // reset maximum altitude above take-off
+            maxAltAdd = 0;                                                                // reset maximum extra altitude
           }                                                                               //
-        if (windowCount == 2)                                                             // если мы в третьем главном окне
-          {                                                                               // ОБНУЛЕНИЕ МАКСИМАЛЬНЫХ ЗНАЧЕНИЙ ВАРИОМЕТРА
-            lcd.clear();                                                                  // чистим экран
-            maxVario = 0;                                                                 // сбрасываем на ноль максимальное значение вариометра
-            minVario = 0;                                                                 // сбрасываем на ноль минимальное значение вариометра
+        if (windowCount == 2)                                                             // if we are on the third main screen
+          {                                                                               // RESET VARIO MAX/MIN
+            lcd.clear();                                                                  // clear the screen
+            maxVario = 0;                                                                 // reset maximum vario
+            minVario = 0;                                                                 // reset minimum vario
           }                                                                               //
-        if (windowCount == 3)                                                             // если мы на четвёртом окне...
-          {                                                                               // ...обнуляем усреднённые макс/мин
+        if (windowCount == 3)                                                             // if we are on the fourth screen...
+          {                                                                               // ...reset averaged max/min
             lcd.clear();                                                                  //
             maxVarioAvg = 0;                                                              //
             minVarioAvg = 0;                                                              //
           }                                                                               //
       }                                                                                   //
-    else if (askSave == false)                                                                                  // ... если мы, все-таки, в МЕНЮ, то...
-      {                                                                                   // при длительном нажатии КНОПКИ 3 в режиме МЕНЮ происходит сброс параметров к дефолтным
-        presSea = 1013.25;                                                                 // переменной для формулы расчета высоты присваивается начальное значение
-        presTMP = 1013.25;                                                                 // временной переменной давления присваивается начальное значение
-        s0 = '1';                                                                         // посимвольное присвоение строкам начальных значений давления
-        s1 = '0';                                                                         // посимвольное присвоение строкам начальных значений давления
-        s2 = '1';                                                                         // посимвольное присвоение строкам начальных значений давления
-        s3 = '3';                                                                         // посимвольное присвоение строкам начальных значений давления
-        s4 = '2';                                                                         // посимвольное присвоение строкам начальных значений давления
-        altSEATmp = 0;                                                                    // обнуление корректируемой высоты (нужно, что бы, при ранее обнулённой высоте у моря, значение вернулось к расчетному по давлению)
+    else if (askSave == false)                                                                                  // ... if we are in the MENU after all...
+      {                                                                                   // long press of BUTTON 3 in the MENU resets parameters to default
+        presSea = 1013.25;                                                                 // the altitude formula variable gets its start value
+        presTMP = 1013.25;                                                                 // the temporary pressure variable gets its start value
+        s0 = '1';                                                                         // pressure digits get their start values
+        s1 = '0';                                                                         // pressure digits get their start values
+        s2 = '1';                                                                         // pressure digits get their start values
+        s3 = '3';                                                                         // pressure digits get their start values
+        s4 = '2';                                                                         // pressure digits get their start values
+        altSEATmp = 0;                                                                    // reset the corrected altitude (so that after a sea level zeroing it returns to the pressure-based value)
       }                                                                                   //
-    longpress = true;                                                                     // переменной присваивается true, т.е. факт длительного нажатия
+    longpress = true;                                                                     // set to true, i.e. a long press happened
   }                                                                                       //
-if (b3.fell() == 1) {longpress = false;}                                                  // убираем факт длительного нажатия при отпускании книпки
-Buttom3.release();                                                                        // обязательно надо прописывать после выполнения click(), иначе выполнится только раз
+if (b3.fell() == 1) {longpress = false;}                                                  // clear the long press flag when the button is released
+Buttom3.release();                                                                        // must be written after click(), otherwise it runs only once
 
-///// ВЫЧИСЛЕНИЕ ВЫСОТЫ / ALTITUDE CALCULATING /////
-altitude = sensor.alti-altTmp;                                                            // ВЫСОТА СТАРТА - присвоение переменной altitude (высота старта или дополнительная высота) значения высоты с датчика минус высота в точке обнуления
-altitudeAdd = sensor.alti-altTmpAdd;                                                      // ДОПОЛНИТЕЛЬНАЯ ВЫСОТА - присвоение переменной altitudeAdd (высота старта или дополнительная высота) значения высоты с датчика минус высота в точке обнуления
-altitudeSEA = -29.21*float(log((sensor.pres*MMHG_TO_HPA)/presSea))*(sensor.temp+273.15);                // ВЫСОТА ПО УРОВНЮ МОРЯ - вычисление по приведённому давлению, давлению в данный момент и значению температуры
+///// ALTITUDE CALCULATING /////
+altitude = sensor.alti-altTmp;                                                            // TAKE-OFF ALTITUDE - altitude = sensor altitude minus altitude at the zeroing point
+altitudeAdd = sensor.alti-altTmpAdd;                                                      // EXTRA ALTITUDE - altitudeAdd = sensor altitude minus altitude at the zeroing point
+altitudeSEA = -29.21*float(log((sensor.pres*MMHG_TO_HPA)/presSea))*(sensor.temp+273.15);                // SEA LEVEL ALTITUDE - from the reference pressure, current pressure and temperature
 
-if ((AutoStart == false) || (inFlight == true)) {flightMs = millis() - timeZero;}   // таймер полёта идёт только в полёте
+if ((AutoStart == false) || (inFlight == true)) {flightMs = millis() - timeZero;}   // flight timer runs only in flight
 
-///// УСРЕДНЕНИЕ ПОКАЗАНИЙ ВАРИОМЕТРА ДЛЯ ЭКРАНА / AVERAGED VARIO FOR THE SCREEN /////
-if (millis() - avgTime >= 1000)                                         // раз в секунду запоминаем высоту
+///// AVERAGED VARIO FOR THE SCREEN /////
+if (millis() - avgTime >= 1000)                                         // store the altitude once per second
   {
     avgTime = millis();                                                 //
     avgIdx++;                                                           //
     if (avgIdx == 31) {avgIdx = 0;}                                     //
     avgAlt[avgIdx] = sensor.alti;                                       //
     if (avgFill < 31) {avgFill++;}                                      //
-    flightDetect();                                                     // проверяем старт / посадку
-    byte n = avgSec[AvgCount];                                          // выбранное время усреднения
-    if (avgFill > n)                                                    // когда снимков накопилось достаточно...
+    flightDetect();                                                     // check take-off / landing
+    byte n = avgSec[AvgCount];                                          // selected averaging time
+    if (avgFill > n)                                                    // when enough snapshots are collected...
       {
-        byte old = (avgIdx + 31 - n) % 31;                              // снимок n секунд назад
-        varioAvg = (avgAlt[avgIdx] - avgAlt[old]) / float(n);           // средняя скорость за это время
+        byte old = (avgIdx + 31 - n) % 31;                              // snapshot n seconds ago
+        varioAvg = (avgAlt[avgIdx] - avgAlt[old]) / float(n);           // average climb rate over that time
       }
   }
 
-///// ПРИСВОЕНИЕ ЗНАЧЕНИЙ МАКС/МИН ВАРИОМЕТРА / ASSIGNING VALUES FOR MAX/MIN VARIO /////
-if (maxVario<vario) {maxVario = vario;}                                 // присвоение максимального значения вариометра
-if (minVario>vario) {minVario = vario;}                                 // присвоение минимального значения вариометра
-if (maxVarioAvg < varioAvg) {maxVarioAvg = varioAvg;}               // запоминаем максимум усреднённого значения
-if (minVarioAvg > varioAvg) {minVarioAvg = varioAvg;}               // запоминаем минимум усреднённого значения
+///// MIN VARIO /////
+if (maxVario<vario) {maxVario = vario;}                                 // store maximum vario
+if (minVario>vario) {minVario = vario;}                                 // store minimum vario
+if (maxVarioAvg < varioAvg) {maxVarioAvg = varioAvg;}               // store maximum averaged value
+if (minVarioAvg > varioAvg) {minVarioAvg = varioAvg;}               // store minimum averaged value
 
-///// ПРИСВОЕНИЕ ЗНАЧЕНИЙ МАКСИМАЛЬНОЙ ВЫСОТЫ / ASSIGNING VALUES FOR MAX ALTITUDES /////
+///// ASSIGNING VALUES FOR MAX ALTITUDES /////
 if (AltDifTmpFlag == true)                                              // 
   {                                                                     //
     if (cnt == 4) {maxAltSea = maxAltSea - altSEATmp;}                  //
@@ -1402,20 +1402,20 @@ else                                                                    //
     if (maxAltAdd < altitudeAdd) {maxAltAdd = altitudeAdd;}             //
   }                                                                     //
 
-///// НАЧАЛЬНЫЕ ЗНАЧЕНИЯ ДЛЯ ПЕРЕМЕННЫХ УСРЕДНИТЕЛЯ / INITIAL VALUES FOR AVERAGER /////
-tempo = millis();                                                       // описание переменной tempo типа float и присвоение ей значения функции millis() - отсчитывает время от начала работы программы в миллисекундах 
-N1 = 0;                                                                 // переменная для работы усреднителя
-N2 = 0;                                                                 // переменная для работы усреднителя
-N3 = 0;                                                                 // переменная для работы усреднителя
-D1 = 0;                                                                 // переменная для работы усреднителя
-D2 = 0;                                                                 // переменная для работы усреднителя
+///// INITIAL VALUES FOR AVERAGER /////
+tempo = millis();                                                       // tempo (float) = millis() - counts time since start in milliseconds
+N1 = 0;                                                                 // variable for the averager
+N2 = 0;                                                                 // variable for the averager
+N3 = 0;                                                                 // variable for the averager
+D1 = 0;                                                                 // variable for the averager
+D2 = 0;                                                                 // variable for the averager
 
-///// ОБНУЛЕНИЕ ВАРИОМЕТРА / ZERO VARIO /////
-vario = 0;                                                              // обнуляем вариометр перед расчётом
+///// ZERO VARIO /////
+vario = 0;                                                              // reset the vario before calculating
 
-///// ЦИКЛ УСРЕДНИТЕЛЯ / AVERAGER CYCLE /////
-for(int cc=1; cc<=maxsamples; cc++)                                     // УСРЕДНИТЕЛЬ 
-{                                                                       // За него огромное спасибо авторам этих проектов:
+///// AVERAGER CYCLE /////
+for(int cc=1; cc<=maxsamples; cc++)                                     // AVERAGER
+{                                                                       // Big thanks for it to the authors of these projects:
   alt[(cc-1)] = alt[cc];                                                // http://www.instructables.com/id/GoFly-paraglidinghanglidinggliding-altimeter-v/?ALLSTEPS
   tim[(cc-1)] = tim[cc];                                                // http://redhats.ru/variometer-arduino-2015/
 }                                                                       //
@@ -1431,81 +1431,81 @@ for(int cc=(maxsamples-samples); cc<maxsamples; cc++)                   //
   N3+=(alt[cc]);                                                        //
   D1+=(tim[cc]-stime)*(tim[cc]-stime);                                  //
   D2+=(tim[cc]-stime);                                                  //
-}                                                                       // окончание тела усреднителя 
+}                                                                       // end of the averager
 
-///// РАСЧЁТ ЗНАЧЕНИЙ ВАРИОМЕТРА / VARIO VALUES CALCULATING /////
-vario=1000*((samples*N1)-N2*N3)/(samples*D1-D2*D2);                     // РАСЧЁТ ЗНАЧЕНИЙ ВАРИОМЕТРА 
+///// VARIO VALUES CALCULATING /////
+vario=1000*((samples*N1)-N2*N3)/(samples*D1-D2*D2);                     // VARIO CALCULATION
 
-///// ВЫВОД ЗВУКА / VARIO SOUND OUTPUT /////
-if (beep_ON == true)                                                    // если включён режим СО ЗВУКОМ...
+///// VARIO SOUND OUTPUT /////
+if (beep_ON == true)                                                    // if sound mode is ON...
 {                                                                       //
 if ((tempo-beep)>Beep_period)                                           // 
 {                                                                       //
   beep=tempo;                                                           //
-  if (vario>vario_up && vario<15)                                       // звук на подъёме
+  if (vario>vario_up && vario<15)                                       // climb sound
   {                                                                     //
-    Alarm = false;                                                      // отключаем тревогу
-    Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
-    gLEDtmp = true;                                                     // зеленый светодиод на подъеме
+    Alarm = false;                                                      // turn off the alarm
+    Stmp = true;                                                        // variable to show "B" while the buzzer sounds
+    gLEDtmp = true;                                                     // green LED on climb
     Beep_period = 350-(vario*80);                                       //
-    playTone((baseFreq+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
+    playTone((baseFreq+(250*vario)),300-(vario*80));                          // play the sound (was 1800)
   }                                                                     //
-  else if ((vario<vario_down))                      // звук на сливе
+  else if ((vario<vario_down))                      // sink sound
   {                                                                     //
-    Alarm = false;                                                      // отключаем тревогу
-    Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
-    rLEDtmp = true;                                                     // красный светодиод на сливе
+    Alarm = false;                                                      // turn off the alarm
+    Stmp = true;                                                        // variable to show "B" while the buzzer sounds
+    rLEDtmp = true;                                                     // red LED on sink
     Beep_period=40;                                                     // update pitch every 40 ms (continuous tone)
-    playTone(constrain(int(baseFreq+(baseFreq/5.0)*vario),80,(int)baseFreq),150);   // непрерывный тон снижения: чем сильнее снижение, тем ниже звук
+    playTone(constrain(int(baseFreq+(baseFreq/5.0)*vario),80,(int)baseFreq),150);   // continuous sink tone: the stronger the sink, the lower the tone
   }                                                                     //
 }                                                                       //
 }                                                                       //
-else                                                                    // ... иначе просто выводим символ "B" рядом со значением вариометра и зажигаем светодиоды
+else                                                                    // ... otherwise just show "B" next to the vario value and light the LEDs
 {                                                                       //
 if ((tempo-beep)>Beep_period)                                           // 
 {                                                                       //
   beep=tempo;                                                           //
-  if (vario>vario_up && vario<15 )                                      // 15 берём чисто из рандомных побуждений
+  if (vario>vario_up && vario<15 )                                      // 15 picked at random
   {                                                                     //
-    Stmp = true;                                                        // "B" на подъёме
-    gLEDtmp = true;                                                     // зеленый светодиод на подъеме
+    Stmp = true;                                                        // "B" on climb
+    gLEDtmp = true;                                                     // green LED on climb
   }                                                                     //
   else if ((vario<vario_down))                      // 
   {                                                                     //
-    Stmp = true;                                                        // "B" на сливе
-    rLEDtmp = true;                                                     // красный светодиод на сливе
+    Stmp = true;                                                        // "B" on sink
+    rLEDtmp = true;                                                     // red LED on sink
   }                                                                     //
 }                                                                       //
 }                                                                       //
 
-///// ЗАЖИГАЕМ/ГАСИМ СВЕТОДИОДЫ / LED ON/OFF FOR VARIO /////
-if ((LED_ON == true)&&(gLEDtmp == true))                                // если (режим с подсветкой включен) и (разрешен зеленый светодиод)
-  {digitalWrite(gLED, HIGH); delay(10); digitalWrite(gLED, LOW);}       // зажигаем зеленый светодиод, ждём время delay, гасим светодиод (гасим быстро, что б батарейку не расходовать)
-else if ((LED_ON == false)||(gLEDtmp == false))                         // иначе, если (режим с подсветкой вЫключен) ИЛИ (запрещен зеленый светодиод)
-  {digitalWrite(gLED, LOW);}                                            // гасим зеленый светодиод
-if ((LED_ON == true)&&(rLEDtmp == true))                                // если (режим с подсветкой включен) и (разрешен красный светодиод)
-  {digitalWrite(rLED, HIGH); delay(10); digitalWrite(gLED, LOW);}       // зажигаем красный светодиод, ждём время delay, гасим светодиод (гасим быстро, что б батарейку не расходовать)
-else if ((LED_ON == true)||(rLEDtmp == false))                          // иначе, если (режим с подсветкой вЫключен) ИЛИ (запрещен красный светодиод)
-  {digitalWrite(rLED, LOW);}                                            // гасим красный светодиод
+///// OFF FOR VARIO /////
+if ((LED_ON == true)&&(gLEDtmp == true))                                // if (LEDs are on) and (green LED allowed)
+  {digitalWrite(gLED, HIGH); delay(10); digitalWrite(gLED, LOW);}       // green LED on, wait, LED off (off quickly to save battery)
+else if ((LED_ON == false)||(gLEDtmp == false))                         // otherwise, if (LEDs are off) OR (green LED not allowed)
+  {digitalWrite(gLED, LOW);}                                            // green LED off
+if ((LED_ON == true)&&(rLEDtmp == true))                                // if (LEDs are on) and (red LED allowed)
+  {digitalWrite(rLED, HIGH); delay(10); digitalWrite(gLED, LOW);}       // red LED on, wait, LED off (off quickly to save battery)
+else if ((LED_ON == true)||(rLEDtmp == false))                          // otherwise, if (LEDs are off) OR (red LED not allowed)
+  {digitalWrite(rLED, LOW);}                                            // red LED off
 
 
-///// ЗАПУСК ПОДПРОГРАММ, В ЗАВИСИМОСТИ ОТ ВКЛ/ВЫКЛ МЕНЮ / START MAIN WINDOW OR MENU /////
-if (MainMenu == false)                                                  // Если режим МЕНЮ ВЫКЛЮЧЕН, то...
-  {lcd_out();}                                                          // подпрограмма вывода значений на экран (НЕ МЕНЮ)
-else                                                                    // ... иначе ...
-  {Menu();}                                                             // очищаем экран и запускаем подпрограмму МЕНЮ
+///// START MAIN WINDOW OR MENU /////
+if (MainMenu == false)                                                  // If the MENU is OFF...
+  {lcd_out();}                                                          // main screen output (NOT MENU)
+else                                                                    // ... otherwise ...
+  {Menu();}                                                             // clear the screen and run the MENU
 
-///// ОБНУЛЕНИЕ ПЕРЕМЕННЫХ В КОНЦЕ ЦИКЛА / VALUES TO ZERO IN THE END OF THE CYCLE /////
-Stmp = false;                                                           // переменная для отображения символа "B" во время работы пищалки
-gLEDtmp = false;                                                        // выключаем зеленый светодиод
-rLEDtmp = false;                                                        // выключаем красный светодиод
+///// VALUES TO ZERO IN THE END OF THE CYCLE /////
+Stmp = false;                                                           // variable to show "B" while the buzzer sounds
+gLEDtmp = false;                                                        // turn off green LED
+rLEDtmp = false;                                                        // turn off red LED
 }
 
-///// ВЫВОД СООБЩЕНИЯ ОБ ОШИБКЕ / ERROR MESSAGE IF SOMETHING WRONG WITH BMP180 SENSOR /////
+///// ERROR MESSAGE IF SOMETHING WRONG WITH BMP180 SENSOR /////
 else                                                                    //
   {                                                                     //
     lcd.setCursor(0,0);                                                 //
-    lcd.print("Sensor error");                                          // вывод на экран информации об ошибке, если данные с датчика не поступают 
+    lcd.print("Sensor error");                                          // error message if there is no data from the sensor
   }                                                                     //
 
 //Serial.println((String)" samples="+samples+" maxsamples="+maxsamples);
