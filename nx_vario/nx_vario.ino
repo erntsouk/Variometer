@@ -137,7 +137,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v35"            // program version shown on the info page
+#define FW_VERSION "v36"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -1782,7 +1782,7 @@ if ((tempo-beep)>Beep_period)                                           //
     Beep_period = 40;                                                   // refresh every 40 ms - one continuous tone
     float k = (vario - buzVals[BuzCount]) / (vario_up - buzVals[BuzCount]);   // 0 at the buzzer value ... 1 at the climb threshold
     playTone(baseFreq * (0.6 + 0.4 * k), 150);                          // CAN BE CHANGED!!! pitch rises from 60% of base up to base
-    byte d = OCR2B >> 2;                                                // quarter of the duty = much softer than the vario beeps
+    byte d = OCR2B * (0.125 + 0.875 * k);                               // CAN BE CHANGED!!! loudness rises from 1/8 of the beep up to the beep
     OCR2B = (d > 0) ? d : 1;                                            //
   }                                                                     //
   else if ((vario<vario_down))                      // sink sound
