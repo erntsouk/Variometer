@@ -65,6 +65,16 @@ float fOmega = 0.7;                 // filter speed, 1/s (set by the Response pa
 unsigned long fusTime = 0;          // time of the last filter update, us
 boolean fusInit = false;            // has the filter started
 #define TILT_K 0.02                 // CAN BE CHANGED!!! how fast "up" follows the accelerometer (0.01 - 0.05)
+#define TILT_GATE 0.05              // CAN BE CHANGED!!! only trust the accelerometer for "up" when it reads within this of 1 g (stops turns fooling it)
+float calOff[3] = {0, 0, 0};        // accelerometer offsets, g (from the 6-side calibration)
+float calSc[3] = {1, 1, 1};         // accelerometer scale (from the 6-side calibration)
+boolean calDone = false;            // is a calibration loaded
+float calP[6][3];                   // averaged readings of the 6 sides while calibrating
+byte calMask = 0;                   // which sides are measured (bit per side)
+byte calMsg = 0;                    // 0 - nothing, 1 - saved, 2 - failed, 3 - side already done
+#define CAL_ADDR 64                 // EEPROM address of the calibration (separate from the settings)
+#define CAL_MAGIC 0xCA11            // marks a valid calibration
+struct AccCal {uint16_t magic; float off[3]; float sc[3];};
 
 float treshUP[5] = {0.1, 0.4, 0.5, 0.6, 0.7};                           // climb thresholds                       - CAN BE CHANGED!!! related variables: vario_up and TrUPcount
 float treshDN[5] = {-0.5, -0.7, -0.9, -1.1, -1.3};                      // sink thresholds                        - CAN BE CHANGED!!! related variables: vario_down and TrDNcount
@@ -99,7 +109,10 @@ boolean altChange = false;          // altitude entry mode on/off
 #define FREQ_MIN 500                // CAN BE CHANGED!!! lowest base frequency, Hz
 #define FREQ_MAX 1200               // CAN BE CHANGED!!! highest base frequency, Hz
 unsigned int baseFreq = 600;        // vario base sound frequency, Hz
-boolean freqMode = false;           // volume page view: false - volume, true - base frequency
+byte volView = 0;                   // volume page view: 0 - volume, 1 - base frequency, 2 - buzzer
+boolean buzEdit = false;            // buzzer is being set
+byte BuzCount = 1;                  // selected buzzer value (index into buzVals)
+const float buzVals[6] = {-0.3, -0.2, -0.1, 0.0, 0.1, 99};   // CAN BE CHANGED!!! buzzer start, m/s (99 = OFF)
 boolean volEdit = false;            // volume is being set
 boolean freqEdit = false;           // base frequency is being entered
 boolean B3Freq = false;             // button 3 pressed while entering frequency
@@ -125,7 +138,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v32"            // program version shown on the info page
+#define FW_VERSION "v33"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -139,12 +152,12 @@ const float respOmega[5] = {2.0, 1.4, 1.0, 0.7, 0.5};   // CAN BE CHANGED!!! fil
 float loopMs = 35;                  // average loop time in ms, measured outside the menu
 unsigned long lastLoop = 0;         // time of the previous loop
 
-static char outtemp[5];             // char array for temperature rounded to tenths
-static char outvario[5];            // char array for vario value rounded to tenths
-static char outalt[5];              // char array for altitude
-static char outTrUP[4];             // char array for the climb threshold being edited (in MENU)
-static char outTrDN[4];             // char array for the sink threshold being edited (in MENU)
-static char outtime[4];             // char array for time
+static char outtemp[8];             // char array for temperature rounded to tenths
+static char outvario[8];            // char array for vario value rounded to tenths
+static char outalt[8];              // char array for altitude
+static char outTrUP[8];             // char array for the climb threshold being edited (in MENU)
+static char outTrDN[8];             // char array for the sink threshold being edited (in MENU)
+static char outtime[8];             // char array for time
 
 unsigned long timeZero = 0;         // variable to reset the timer (MUST be unsigned long!!!)
 boolean AutoStart = true;           // automatic take-off and landing detection
@@ -265,11 +278,12 @@ struct SavedSettings {
   uint16_t magic;
   byte TrUP, TrDN, vol, avg, resp;
   uint16_t base;
+  byte buz;
   boolean autoStart;
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55F       // change this number to reset the saved settings
+#define SETTINGS_MAGIC 0xA560       // change this number to reset the saved settings
 
 void applySettings()
 {
@@ -282,10 +296,10 @@ void loadSettings()
 {
   SavedSettings s;
   EEPROM.get(0, s);
-  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.base >= FREQ_MIN && s.base <= FREQ_MAX && s.presSea > 300.0 && s.presSea < 1200.0)
+  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.buz < 6 && s.base >= FREQ_MIN && s.base <= FREQ_MAX && s.presSea > 300.0 && s.presSea < 1200.0)
     {
       TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
-      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart; baseFreq = s.base;
+      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart; baseFreq = s.base; BuzCount = s.buz;
       presSea = s.presSea;
     }
 }
@@ -295,7 +309,7 @@ void saveSettings()
   SavedSettings s;
   s.magic = SETTINGS_MAGIC;
   s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount; s.avg = AvgCount;
-  s.led = LED_ON; s.btnBeep = button_beep_ON; s.resp = RespCount; s.autoStart = AutoStart; s.base = baseFreq;
+  s.led = LED_ON; s.btnBeep = button_beep_ON; s.resp = RespCount; s.autoStart = AutoStart; s.base = baseFreq; s.buz = BuzCount;
   s.presSea = presSea;
   EEPROM.put(0, s);                 // only changed bytes are written
 }
@@ -305,19 +319,20 @@ byte bkTrUP, bkTrDN, bkVol, bkAvg;  // copies of the settings when the menu was 
 boolean bkLED, bkBtn, bkAuto;       //
 byte bkResp;                        //
 unsigned int bkBase;                //
+byte bkBuz;                         //
 float bkPres;                       //
 
 void backupSettings()               // remember the settings when the menu opens
 {
   bkTrUP = TrUPcount; bkTrDN = TrDNcount; bkVol = volCount; bkAvg = AvgCount;
-  bkLED = LED_ON; bkBtn = button_beep_ON; bkResp = RespCount; bkAuto = AutoStart; bkBase = baseFreq;
+  bkLED = LED_ON; bkBtn = button_beep_ON; bkResp = RespCount; bkAuto = AutoStart; bkBase = baseFreq; bkBuz = BuzCount;
   bkPres = presSea;
 }
 
 void restoreSettings()              // put the settings back as they were when the menu opened
 {
   TrUPcount = bkTrUP; TrDNcount = bkTrDN; volCount = bkVol; AvgCount = bkAvg;
-  LED_ON = bkLED; button_beep_ON = bkBtn; RespCount = bkResp; AutoStart = bkAuto; baseFreq = bkBase;
+  LED_ON = bkLED; button_beep_ON = bkBtn; RespCount = bkResp; AutoStart = bkAuto; baseFreq = bkBase; BuzCount = bkBuz;
   presSea = bkPres;
   applySettings();
   avgFill = 0;                      // start averaging again
@@ -371,7 +386,9 @@ void mpuInit()                      // wake up and calibrate - the vario must be
       delay(5);
     }
   if (n < 50) {mpuOK = false; return;}
-  sx /= n * 8192.0; sy /= n * 8192.0; sz /= n * 8192.0;     // g  (+-4 g range = 8192 per g)
+  sx = (sx / (n * 8192.0) - calOff[0]) / calSc[0];          // g  (+-4 g range = 8192 per g), calibration applied
+  sy = (sy / (n * 8192.0) - calOff[1]) / calSc[1];
+  sz = (sz / (n * 8192.0) - calOff[2]) / calSc[2];
   gbx = sgx / (n * 131.0); gby = sgy / (n * 131.0); gbz = sgz / (n * 131.0);   // deg/s
   g0 = sqrt(sx*sx + sy*sy + sz*sz); // gravity as this sensor reads it
   if ((g0 < 0.5) || (g0 > 1.5)) {mpuOK = false; return;}    // nonsense - do not use it
@@ -394,7 +411,9 @@ void fusionUpdate(float hBaro)      // called every time the barometer has a new
   int16_t v[7];
   if (mpuOK && mpuRead(v))
     {
-      float ax = v[0] / 8192.0, ay = v[1] / 8192.0, a_z = v[2] / 8192.0;   // g
+      float ax = (v[0] / 8192.0 - calOff[0]) / calSc[0];     // g, calibration applied
+      float ay = (v[1] / 8192.0 - calOff[1]) / calSc[1];
+      float a_z = (v[2] / 8192.0 - calOff[2]) / calSc[2];
       float wx = (v[4] / 131.0 - gbx) * 0.0174533;           // rad/s, bias removed
       float wy = (v[5] / 131.0 - gby) * 0.0174533;
       float wz = (v[6] / 131.0 - gbz) * 0.0174533;
@@ -402,7 +421,7 @@ void fusionUpdate(float hBaro)      // called every time the barometer has a new
       float ny = uy - (wz*ux - wx*uz) * dt;
       float nz = uz - (wx*uy - wy*ux) * dt;
       float am = sqrt(ax*ax + ay*ay + a_z*a_z);
-      if ((am > 0.5) && (am < 1.5))                          // nudge it toward the measured gravity
+      if (fabs(am - g0) < TILT_GATE)                         // only when it is not being shaken or turned: nudge toward measured gravity
         {nx += (ax/am - nx) * TILT_K; ny += (ay/am - ny) * TILT_K; nz += (a_z/am - nz) * TILT_K;}
       float nm = sqrt(nx*nx + ny*ny + nz*nz);
       ux = nx / nm; uy = ny / nm; uz = nz / nm;
@@ -414,6 +433,70 @@ void fusionUpdate(float hBaro)      // called every time the barometer has a new
   vEst += (az - bEst + 3*w*w*e) * dt;
   bEst -= w*w*w*e * dt;
   vario = vEst;
+}
+
+///// ACCELEROMETER 6-SIDE CALIBRATION /////
+// Lay the vario still on each of its 6 sides and press button 3 on each.
+// Opposite sides give each axis's offset and scale (works even if the sensor is mounted a bit crooked).
+void calLoad()                      // read a saved calibration at start
+{
+  AccCal c;
+  EEPROM.get(CAL_ADDR, c);
+  if (c.magic != CAL_MAGIC) {return;}
+  for (byte k = 0; k < 3; k++)
+    {if ((fabs(c.off[k]) > 0.25) || (c.sc[k] < 0.9) || (c.sc[k] > 1.1)) {return;}}
+  for (byte k = 0; k < 3; k++) {calOff[k] = c.off[k]; calSc[k] = c.sc[k];}
+  calDone = true;
+}
+
+void calSide()                      // measure the side the vario is lying on now
+{
+  if (mpuOK == false) {calMsg = 2; return;}
+  int16_t v[7];
+  float a[3] = {0, 0, 0};
+  byte n = 0;
+  for (byte i = 0; i < 100; i++)
+    {
+      if (mpuRead(v)) {a[0] += v[0]; a[1] += v[1]; a[2] += v[2]; n++;}
+      delay(5);
+    }
+  if (n < 50) {calMsg = 2; return;}
+  for (byte k = 0; k < 3; k++) {a[k] /= n * 8192.0;}         // raw g, no correction
+  byte ax = 0;                                               // which axis points up or down
+  for (byte k = 1; k < 3; k++) {if (fabs(a[k]) > fabs(a[ax])) {ax = k;}}
+  byte side = ax * 2 + (a[ax] < 0 ? 1 : 0);                  // X+ X- Y+ Y- Z+ Z-
+  if (calMask & (1 << side)) {calMsg = 3; return;}           // this side is already done
+  for (byte k = 0; k < 3; k++) {calP[side][k] = a[k];}
+  calMask |= (1 << side);
+  calMsg = 0;
+  if (calMask == 0x3F) {calSolve(); calMask = 0;}            // all 6 done
+}
+
+void calSolve()                     // offset = middle of the two opposite sides, scale = length of the gravity vector
+{
+  AccCal c;
+  c.magic = CAL_MAGIC;
+  for (byte k = 0; k < 3; k++)      // offsets first: X from X+/X-, Y from Y+/Y-, Z from Z+/Z-
+    {c.off[k] = (calP[k*2][k] + calP[k*2+1][k]) / 2;}
+  for (byte k = 0; k < 3; k++)      // then scales: on both sides of an axis the corrected vector should be 1 g long
+    {
+      float len = 0;
+      for (byte sd = k*2; sd < k*2+2; sd++)
+        {
+          float sq = 0;
+          for (byte j = 0; j < 3; j++) {float d = calP[sd][j] - c.off[j]; sq += d*d;}
+          len += sqrt(sq) / 2;
+        }
+      c.sc[k] = len;
+    }
+  for (byte k = 0; k < 3; k++)
+    {if ((fabs(c.off[k]) > 0.25) || (c.sc[k] < 0.9) || (c.sc[k] > 1.1)) {calMsg = 2; return;}}   // nonsense - keep the old one
+  for (byte k = 0; k < 3; k++) {calOff[k] = c.off[k]; calSc[k] = c.sc[k];}
+  EEPROM.put(CAL_ADDR, c);          // saved straight away - it belongs to the sensor, not to the settings
+  calDone = true;
+  calMsg = 1;
+  mpuInit();                        // re-measure "up" and the gyro with the new calibration
+  fusInit = false;                  // restart the filter
 }
 
 ///// AUTO TAKE-OFF AND LANDING /////
@@ -492,6 +575,9 @@ void exitMenu()
   askReset = false;                   // and the reset question
   altChange = false;                  // turn off altitude entry
   volEdit = false;                    // turn off volume setting
+  buzEdit = false;                    // and buzzer setting
+  calMask = 0;                        // a half-done calibration is dropped
+  calMsg = 0;                         //
   freqEdit = false;                   // and frequency entry
   MainMenu = false;                   // close the menu
   menuCount = 0;                      // reset the menu page counter
@@ -514,10 +600,27 @@ void exitMenu()
   lcd.clear();                        // clear the screen
 }
 
+void fmtNum(char *buf, float v, byte width, byte dec)   // number as right-aligned text, 0 or 1 decimal (replaces dtostrf)
+{
+  char tmp[10];
+  byte n = 0;
+  boolean neg = (v < 0);
+  if (neg) {v = -v;}
+  long x = (long)(v * (dec ? 10 : 1) + 0.5);
+  if (x == 0) {neg = false;}                                 // no "-0.0"
+  if (dec) {tmp[n++] = '0' + x % 10; x /= 10; tmp[n++] = '.';}
+  do {tmp[n++] = '0' + x % 10; x /= 10;} while ((x > 0) && (n < 8));
+  if (neg) {tmp[n++] = '-';}
+  byte i = 0;
+  while (i + n < width) {buf[i++] = ' ';}
+  while (n > 0) {buf[i++] = tmp[--n];}
+  buf[i] = 0;
+}
+
 void presToStr(float v)             // pressure as text "1013.2" (4 digits + 1 after the point), written into presSTR
 {
   char buf[10];
-  dtostrf(v, 6, 1, buf);
+  fmtNum(buf, v, 6, 1);
   for (byte i = 0; buf[i] == ' '; i++) {buf[i] = '0';}
   for (byte i = 0; i < 6; i++) {presSTR[i] = buf[i];}
   presSTR[6] = 0;
@@ -579,6 +682,7 @@ void setup()
   lcd.setCursor(3,1);               //
   lcd.print(presSea,1);             // show the start pressure in hPa
   lcd.print(F(" hPa"));                //
+  calLoad();                        // accelerometer calibration from memory (if there is one)
   mpuInit();                        // start and calibrate the MPU6050 (~0.7 s, keep the vario still)
   delay(1300);                      // rest of the 2 second pause
   playTone((2500),70);                // double beep at start
@@ -651,12 +755,12 @@ if (windowCount == 0)                                                   // if th
     }                                                                   // 
 
 ///// VARIO OUTPUT /////
-  dtostrf(varioAvg,4, 1, outvario);                                        // convert vario (float) to a char array rounded to tenths
+  fmtNum(outvario, varioAvg, 4, 1);                                        // convert vario (float) to a char array rounded to tenths
   lcd.setCursor(1,0);                                                   //
   lcd.print(outvario);                                                  // show vario rounded to tenths
 
 ///// TEMPERATURE OUTPUT (C) /////
-  dtostrf(sensor.temp,5, 1, outtemp);                                   // convert sensor.temp to a char array rounded to tenths
+  fmtNum(outtemp, sensor.temp, 5, 1);                                   // convert sensor.temp to a char array rounded to tenths
   lcd.setCursor(10,1);                                                  //
   lcd.print(outtemp);                                                   // show temperature rounded to tenths
   lcd.write(byte(1));                                                   // degree symbol after the temperature
@@ -664,7 +768,7 @@ if (windowCount == 0)                                                   // if th
 ///// TIME OUTPUT (Min) /////
   lcd.setCursor(11,0);                                                  //
   lcd.print(F("Tm"));                                                      // print Tm (time, minutes)
-  dtostrf(((flightMs/1000)/60),3, 0, outtime);               // convert elapsed time to a char array rounded to whole numbers
+  fmtNum(outtime, ((flightMs/1000)/60), 3, 0);               // convert elapsed time to a char array rounded to whole numbers
   lcd.print(outtime);                                                   // show time rounded to whole numbers
 
 ///// ALT ABOVE SEA OUTPUT (m) /////
@@ -672,7 +776,7 @@ if (cnt==4)                                                             // ALTIT
   {                                                                     //
   lcd.setCursor(2,1);                                                   //
   lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
-  dtostrf(float(altitudeSEA),4, 0, outalt);                             // convert sensor.temp to a char array rounded to tenths
+  fmtNum(outalt, float(altitudeSEA), 4, 0);                             // convert sensor.temp to a char array rounded to tenths
   lcd.print(outalt);                                                    // show temperature rounded to tenths
   lcd.print(F("m"));                                                       //
   }                                                                     //
@@ -682,7 +786,7 @@ if (cnt==5)                                                             // ALTIT
   {                                                                     // 
   lcd.setCursor(2,1);                                                   //
   lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
-  dtostrf(float(altitude),4, 0, outalt);                                // convert sensor.temp to a char array rounded to tenths
+  fmtNum(outalt, float(altitude), 4, 0);                                // convert sensor.temp to a char array rounded to tenths
   lcd.print(outalt);                                                    // show temperature rounded to tenths
   lcd.print(F("m"));                                                       //
   }                                                                     //
@@ -692,7 +796,7 @@ if (cnt==6)                                                             // EXTRA
   {                                                                     //
   lcd.setCursor(2,1);                                                   //
   lcd.write(byte(cnt));                                                 // altitude symbol (cnt - counter changed by the button)
-  dtostrf(float(altitudeAdd),4, 0, outalt);                             // convert sensor.temp to a char array rounded to tenths
+  fmtNum(outalt, float(altitudeAdd), 4, 0);                             // convert sensor.temp to a char array rounded to tenths
   lcd.print(outalt);                                                    // show temperature rounded to tenths
   lcd.print(F("m"));                                                       //
   }                                                                     //
@@ -841,7 +945,8 @@ void Menu()                                                                     
     else if (menuCount == 7) {AvgTime();}                                         // menu page 8 - averaging time
     else if (menuCount == 8) {AutoStartSet();}                                     // menu page 9 - auto take-off detection
     else if (menuCount == 9) {FactoryResetPage();}                                // menu page 10 - factory reset
-    else if (menuCount == 10) {InfoPage();}                                       // menu page 11 - info
+    else if (menuCount == 10) {CalPage();}                                        // menu page 11 - accelerometer calibration
+    else if (menuCount == 11) {InfoPage();}                                       // menu page 12 - info
 }                                                                                 //
 
 ///// SET ALTITUDE, PRESSURE IS CALCULATED /////
@@ -891,7 +996,7 @@ void SeaPresChange()                                                            
               B3Pres = false;                                                     //
             }
           presSTR[0] = s0; presSTR[1] = s1; presSTR[2] = s2; presSTR[3] = s3; presSTR[4] = '.'; presSTR[5] = s4; presSTR[6] = 0;                                   // build the pressure string
-          presTMP = atof(presSTR);                                            //
+          presTMP = (s0-'0')*1000.0 + (s1-'0')*100 + (s2-'0')*10 + (s3-'0') + (s4-'0')/10.0;                                            //
           presSea = presTMP;                                                      // apply immediately - altitude updates instantly
           lcd.setCursor(10,0);                                                    //
           lcd.print(F("     "));                                                     // erase the old cursor
@@ -923,7 +1028,7 @@ void SeaPresChange()                                                            
               B3Alt = false;                                                      //
             }
           put4(altSTR, t0, t1, t2, t3);                                           // build the altitude string
-          altSet = atoi(altSTR);                                                //
+          altSet = (t0-'0')*1000 + (t1-'0')*100 + (t2-'0')*10 + (t3-'0');                                                //
           presSea = (sensor.pres*MMHG_TO_HPA)*exp(float(altSet)/(29.21*(sensor.temp+273.15)));   // calculate pressure from altitude immediately
           presToDigits(presSea);                                                  // and refresh the pressure digits
           presTMP = presSea;                                                      //
@@ -958,7 +1063,7 @@ void TresholdUP()                                                               
         TresUPchange = false;                                                     // clear the button 3 press
       }                                                                           // 
   lcd.setCursor(12,1);                                                            // 
-  dtostrf(vario_up, 4, 1, outTrUP);                                               // convert vario_up from float to a char array for the screen
+  fmtNum(outTrUP, vario_up, 4, 1);                                               // convert vario_up from float to a char array for the screen
   lcd.print(outTrUP);                                                     // show the climb threshold
 }                                                                                 //
 
@@ -974,7 +1079,7 @@ void TresholdDN()                                                               
         TresDNchange = false;                                                     // clear the button 3 press
       }                                                                           // 
   lcd.setCursor(12,1);                                                            // 
-  dtostrf(vario_down, 4, 1, outTrDN);                                             // convert vario_down from float to a char array for the screen
+  fmtNum(outTrDN, vario_down, 4, 1);                                             // convert vario_down from float to a char array for the screen
   lcd.print(outTrDN);                                                     // show the sink threshold
 }                                                                                 //
 
@@ -1009,7 +1114,7 @@ void FactoryResetPage()                                                         
 void factoryReset()                 // all settings back to default, saved straight away
 {
   TrUPcount = 0; TrDNcount = 3;     // thresholds
-  volCount = 3; baseFreq = 600;     // sound
+  volCount = 3; baseFreq = 600; BuzCount = 1;   // sound (buzzer -0.2)
   AvgCount = 1; RespCount = 3;      // averaging and response
   LED_ON = false; button_beep_ON = true; AutoStart = true;
   presSea = 1013.25;                // standard pressure
@@ -1021,6 +1126,22 @@ void factoryReset()                 // all settings back to default, saved strai
   backupSettings();                 // so the exit question cannot undo it
   SSL_beep();                       // confirmation beep
 }
+
+///// ACCELEROMETER CALIBRATION PAGE /////
+void CalPage()                                                                    //
+{                                                                                 //
+  lcd.setCursor(0,1);                                                             //
+  if (calMsg == 1) {lcd.print(F("Cal saved       ")); return;}                    //
+  if (calMsg == 2) {lcd.print(F("Cal failed      ")); return;}                    //
+  if (calMsg == 3) {lcd.print(F("Side done, next ")); return;}                    //
+  lcd.print(F("Cal "));                                                           // sides measured so far, ".." = still to do
+  const char sides[] = "XXYYZZ";                                                  //
+  for (byte i = 0; i < 6; i++)                                                    //
+    {                                                                             //
+      if (calMask & (1 << i)) {lcd.print(sides[i]); lcd.print((i & 1) ? '-' : '+');}
+      else {lcd.print(F(".."));}                                                  //
+    }                                                                             //
+}                                                                                 //
 
 ///// INFO PAGE /////
 extern int __heap_start, *__brkval; // used to measure free RAM
@@ -1037,7 +1158,19 @@ void InfoPage()                                                                 
   else if (infoCount == 1) {lcd.print(F("Temp     ")); lcd.print(sensor.temp,1); lcd.print(F("C  "));}
   else if (infoCount == 2) {lcd.print(F("Loop      ")); lcd.print((int)loopMs); lcd.print(F("ms  "));}
   else if (infoCount == 3) {lcd.print(F("Free RAM  ")); lcd.print(freeRam()); lcd.print(F("B  "));}
-  else {lcd.print(F("Accel     ")); if (mpuOK) {lcd.print(F("OK    "));} else {lcd.print(F("none  "));}}
+  else if (infoCount == 4)                                                        // accelerometer status
+    {
+      lcd.print(F("Accel "));
+      if (mpuOK == false) {lcd.print(F("none      "));}
+      else if (calDone) {lcd.print(F("OK cal    "));}
+      else {lcd.print(F("OK no cal "));}
+    }
+  else                                                                            // barometer status
+    {
+      lcd.print(F("Baro  "));
+      Wire.beginTransmission(0x77);                                               // is the BMP180 answering?
+      if (Wire.endTransmission() == 0) {lcd.print(F("OK        "));} else {lcd.print(F("none      "));}
+    }
 }                                                                                 //
 
 ///// AVERAGING TIME /////
@@ -1055,7 +1188,23 @@ void AvgTime()                                                                  
 ///// BUZZER VOLUME /////
 void VolumeSet()                                                                  // volume / base frequency page
 {                                                                                 //
-  if (freqMode == false)                                                          // ===== "VOLUME" VIEW =====
+  if (volView == 2)                                                               // ===== "BUZZER" VIEW =====
+    {
+      lcd.setCursor(0,1);                                                         //
+      lcd.print(F("Buzzer     "));                                                //
+      lcd.setCursor(11,1);                                                        //
+      if (buzVals[BuzCount] > 50) {lcd.print(F("  OFF"));}                        //
+      else                                                                        //
+        {
+          if (buzVals[BuzCount] >= 0) {lcd.print(F(" "));}                        //
+          lcd.print(buzVals[BuzCount],1);                                         // e.g. -0.2
+          lcd.print(F(" "));                                                      //
+        }
+      lcd.setCursor(10,0);                                                        //
+      if (buzEdit == true) {lcd.print(F("   v  "));}                              // cursor over the value
+      else {lcd.print(F("      "));}                                              //
+    }
+  else if (volView == 0)                                                          // ===== "VOLUME" VIEW =====
     {
       lcd.setCursor(0,1);                                                         //
       lcd.print(F("Volume      "));                                                  //
@@ -1180,9 +1329,9 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
             if (saveChoice == true) {saveChoice = false;}                                 // ... toggle YES/NO
             else {saveChoice = true;}                                                     //
           }
-        else if ((presChange == false) && (altChange == false) && (volEdit == false) && (freqEdit == false))                           // otherwise go BACK one menu page
+        else if ((presChange == false) && (altChange == false) && (volEdit == false) && (freqEdit == false) && (buzEdit == false))                           // otherwise go BACK one menu page
           {
-            if (menuCount == 0) {menuCount = 11;}                                          // from the first page go to the last
+            if (menuCount == 0) {menuCount = 12;}                                          // from the first page go to the last
             menuCount -= 1;                                                               //
             lcd.clear();                                                                  //
           }
@@ -1260,6 +1409,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
             if (symCount == 4) {symCount = 0;}                                            //
           }                                                                               //
         else if (volEdit == true) {}                                                      // no paging while setting volume
+        else if (buzEdit == true) {}                                                      // or the buzzer
         else if (altChange == true)                                                       // if editing altitude...
           {                                                                               //
             symCount += 1;                                                                // ... move the cursor over the altitude digits
@@ -1268,7 +1418,7 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
         else                                                                              // otherwise go to the next menu page
           {                                                                               //
             menuCount += 1;                                                               //
-            if (menuCount == 11) {menuCount = 0;}                                         // after the last page - back to the first
+            if (menuCount == 12) {menuCount = 0;}                                         // after the last page - back to the first
           }                                                                               //
       }                                                                                   //
   }                                                                                       // 
@@ -1301,7 +1451,13 @@ if (Buttom2.click())                                                            
       {                                                                                   //
         if (menuCount == 5)                                                               // on the volume / base frequency page
           {                                                                               //
-            if (freqMode == false)                                                        // --- "volume" view ---
+            if (volView == 2)                                                             // --- "buzzer" view ---
+              {                                                                           //
+                if (buzEdit == false) {buzEdit = true;}                                   // start setting
+                else {buzEdit = false;}                                                   // finish
+                lcd.clear();                                                              //
+              }                                                                           //
+            else if (volView == 0)                                                        // --- "volume" view ---
               {                                                                           //
                 if (volEdit == false) {volEdit = true;}                                   // start setting
                 else {volEdit = false; playTone(baseFreq,300); beepDelay(300);}           // finish, test beep
@@ -1318,7 +1474,7 @@ if (Buttom2.click())                                                            
                 else                                                                      //
                   {                                                                       //
                     freqEdit = false;                                                     // finish entering
-                    int v = atoi(freqSTR);                                              //
+                    int v = (f0-'0')*1000 + (f1-'0')*100 + (f2-'0')*10 + (f3-'0');                                              //
                     if (v < FREQ_MIN) {v = FREQ_MIN;}                                     // limit the range
                     if (v > FREQ_MAX) {v = FREQ_MAX;}                                     //
                     baseFreq = v;                                                         //
@@ -1453,10 +1609,15 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
                 beepDelay(150);                                                           //
               }                                                                           //
             else if (freqEdit == true) {B3Freq = true;}                                   // entering frequency - change the digit
-            else                                                                          // otherwise switch view: volume <-> frequency
+            else if (buzEdit == true)                                                     // setting the buzzer - next value
               {                                                                           //
-                if (freqMode == true) {freqMode = false;}                                 //
-                else {freqMode = true;}                                                   //
+                BuzCount++;                                                               //
+                if (BuzCount == 6) {BuzCount = 0;}                                        // after OFF back to -0.3
+              }                                                                           //
+            else                                                                          // otherwise switch view: volume -> frequency -> buzzer
+              {                                                                           //
+                volView++;                                                                //
+                if (volView == 3) {volView = 0;}                                          //
                 lcd.clear();                                                              //
               }                                                                           //
           }                                                                               //
@@ -1488,10 +1649,21 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             resetChoice = false;                                                          // default - NO, for safety
             lcd.clear();                                                                  //
           }                                                                               //
-        if (menuCount == 10)                                                              // ...if we are on the info page
+        if (menuCount == 10)                                                              // ...if we are on the calibration page
+          {                                                                               //
+            if (calMsg == 1) {calMsg = 0;}                                                // after "saved" a press starts a new calibration
+            else                                                                          //
+              {                                                                           //
+                calSide();                                                                // measure the side it is lying on
+                if (calMsg == 1) {SSL_beep();}                                            // all 6 done and saved
+                else if (calMsg >= 2) {triple_beep();}                                    // failed or side already done
+              }                                                                           //
+            lcd.clear();                                                                  //
+          }                                                                               //
+        if (menuCount == 11)                                                              // ...if we are on the info page
           {                                                                               //
             infoCount++;                                                                  // next info item
-            if (infoCount == 5) {infoCount = 0;}                                          //
+            if (infoCount == 6) {infoCount = 0;}                                          //
             lcd.clear();                                                                  //
           }                                                                               //
       }                                                                                   //
@@ -1608,6 +1780,12 @@ if ((tempo-beep)>Beep_period)                                           //
     gLEDtmp = true;                                                     // green LED on climb
     Beep_period = 350-(vario*80);                                       //
     playTone((baseFreq+(250*vario)),300-(vario*80));                          // play the sound (was 1800)
+  }                                                                     //
+  else if ((buzVals[BuzCount] < 50) && (vario > buzVals[BuzCount]) && (vario <= vario_up))   // buzzer: weak lift, below the climb threshold
+  {                                                                     //
+    Stmp = true;                                                        //
+    Beep_period = 140;                                                  // quick soft clicks
+    playTone(baseFreq, 25);                                             //
   }                                                                     //
   else if ((vario<vario_down))                      // sink sound
   {                                                                     //
