@@ -124,7 +124,6 @@ char freqSTR[5] = "0600";           // base frequency string
 boolean altMode = false;            // false - set pressure in hPa, true - set altitude in metres
 boolean B3Alt = false;              // button 3 pressed in altitude entry mode
 
-boolean Stmp = false;               // variable to show the "B" symbol (OPTIONAL)
 boolean longpress = false;          // long press check
 boolean beep_ON = true;             // vario sound on/off
 boolean soundManual = false;        // sound switched manually - automatic control leaves it alone
@@ -138,7 +137,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v34"            // program version shown on the info page
+#define FW_VERSION "v35"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -725,10 +724,8 @@ if (AfterAlarmFlag == true)                                             // if th
 if (windowCount == 0)                                                   // if the first main screen is selected
 {                                                                       //
   
-///// SYMBOL "B" OUTPUT (for Vario) /////
-  lcd.setCursor(5,0);                                                   //
-    if (Stmp==true) {lcd.print(F("B"));}                                   // show "B" (beep) when the buzzer sounds (in case the speaker is disconnected)
-    else {lcd.print(F(" "));}                                              // show " " when the buzzer is silent (in case the speaker is disconnected)
+  lcd.setCursor(5,0);                                                   // keep the space after the vario value empty
+  lcd.print(' ');                                                       //
       
 ///// SYMBOL "S" OUTPUT (for Speaker) /////
   lcd.setCursor(9,0);                                                   //
@@ -1776,22 +1773,21 @@ if ((tempo-beep)>Beep_period)                                           //
   if (vario>vario_up && vario<15)                                       // climb sound
   {                                                                     //
     Alarm = false;                                                      // turn off the alarm
-    Stmp = true;                                                        // variable to show "B" while the buzzer sounds
     gLEDtmp = true;                                                     // green LED on climb
     Beep_period = 350-(vario*80);                                       //
     playTone((baseFreq+(250*vario)),300-(vario*80));                          // play the sound (was 1800)
   }                                                                     //
   else if ((buzVals[BuzCount] < 50) && (vario > buzVals[BuzCount]) && (vario <= vario_up))   // buzzer: weak lift, below the climb threshold
   {                                                                     //
-    Stmp = true;                                                        //
     Beep_period = 40;                                                   // refresh every 40 ms - one continuous tone
-    playTone(baseFreq, 150);                                            // steady tone at the base frequency
-    if (OCR2B > 1) {OCR2B >>= 1;}                                       // half the duty = softer than the vario beeps
+    float k = (vario - buzVals[BuzCount]) / (vario_up - buzVals[BuzCount]);   // 0 at the buzzer value ... 1 at the climb threshold
+    playTone(baseFreq * (0.6 + 0.4 * k), 150);                          // CAN BE CHANGED!!! pitch rises from 60% of base up to base
+    byte d = OCR2B >> 2;                                                // quarter of the duty = much softer than the vario beeps
+    OCR2B = (d > 0) ? d : 1;                                            //
   }                                                                     //
   else if ((vario<vario_down))                      // sink sound
   {                                                                     //
     Alarm = false;                                                      // turn off the alarm
-    Stmp = true;                                                        // variable to show "B" while the buzzer sounds
     rLEDtmp = true;                                                     // red LED on sink
     Beep_period=40;                                                     // update pitch every 40 ms (continuous tone)
     playTone(constrain(int(baseFreq+(baseFreq/5.0)*vario),80,(int)baseFreq),150);   // continuous sink tone: the stronger the sink, the lower the tone
@@ -1805,12 +1801,10 @@ if ((tempo-beep)>Beep_period)                                           //
   beep=tempo;                                                           //
   if (vario>vario_up && vario<15 )                                      // 15 picked at random
   {                                                                     //
-    Stmp = true;                                                        // "B" on climb
     gLEDtmp = true;                                                     // green LED on climb
   }                                                                     //
   else if ((vario<vario_down))                      // 
   {                                                                     //
-    Stmp = true;                                                        // "B" on sink
     rLEDtmp = true;                                                     // red LED on sink
   }                                                                     //
 }                                                                       //
@@ -1834,7 +1828,6 @@ else                                                                    // ... o
   {Menu();}                                                             // clear the screen and run the MENU
 
 ///// VALUES TO ZERO IN THE END OF THE CYCLE /////
-Stmp = false;                                                           // variable to show "B" while the buzzer sounds
 gLEDtmp = false;                                                        // turn off green LED
 rLEDtmp = false;                                                        // turn off red LED
 }
