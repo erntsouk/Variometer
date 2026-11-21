@@ -89,6 +89,18 @@ char t3 = '0';                      //
 String altSTR;                      // строка редактируемой высоты
 int altSet = 0;                     // введённая высота в метрах
 boolean altChange = false;          // включение/выключение режима ввода высоты
+#define FREQ_MIN 500                // МОЖНО МЕНЯТЬ!!! самая низкая базовая частота, Гц
+#define FREQ_MAX 1200               // МОЖНО МЕНЯТЬ!!! самая высокая базовая частота, Гц
+unsigned int baseFreq = 600;        // базовая частота звука вариометра, Гц
+boolean freqMode = false;           // вид страницы громкости: false - громкость, true - базовая частота
+boolean volEdit = false;            // идёт настройка громкости
+boolean freqEdit = false;           // идёт ввод базовой частоты
+boolean B3Freq = false;             // нажата кнопка 3 при вводе частоты
+char f0 = '0';                      // цифры базовой частоты
+char f1 = '6';                      //
+char f2 = '0';                      //
+char f3 = '0';                      //
+String freqSTR = "0600";            // строка базовой частоты
 boolean altMode = false;            // false - задаём давление в hPa, true - задаём высоту в метрах
 boolean B3Alt = false;              // нажатие кнопки 3 в режиме ввода высоты
 
@@ -241,11 +253,12 @@ byte arrow_e_down[8]                // кодируем символ пусто�
 struct SavedSettings {
   uint16_t magic;
   byte TrUP, TrDN, vol, avg, resp;
+  uint16_t base;
   boolean autoStart;
   byte led, btnBeep, thermal;
   float presSea;
 };
-#define SETTINGS_MAGIC 0xA55E       // если изменить это число, сохранённые настройки сбросятся
+#define SETTINGS_MAGIC 0xA55F       // если изменить это число, сохранённые настройки сбросятся
 
 void applySettings()
 {
@@ -258,10 +271,10 @@ void loadSettings()
 {
   SavedSettings s;
   EEPROM.get(0, s);
-  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.presSea > 300.0 && s.presSea < 1200.0)
+  if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.base >= FREQ_MIN && s.base <= FREQ_MAX && s.presSea > 300.0 && s.presSea < 1200.0)
     {
       TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
-      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart;
+      LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart; baseFreq = s.base;
       presSea = s.presSea;
     }
 }
@@ -271,7 +284,7 @@ void saveSettings()
   SavedSettings s;
   s.magic = SETTINGS_MAGIC;
   s.TrUP = TrUPcount; s.TrDN = TrDNcount; s.vol = volCount; s.avg = AvgCount;
-  s.led = LED_ON; s.btnBeep = button_beep_ON; s.resp = RespCount; s.autoStart = AutoStart;
+  s.led = LED_ON; s.btnBeep = button_beep_ON; s.resp = RespCount; s.autoStart = AutoStart; s.base = baseFreq;
   s.presSea = presSea;
   EEPROM.put(0, s);                 // записываются только изменившиеся байты
 }
@@ -280,19 +293,20 @@ void saveSettings()
 byte bkTrUP, bkTrDN, bkVol, bkAvg;  // копии настроек на момент входа в меню
 boolean bkLED, bkBtn, bkAuto;       //
 byte bkResp;                        //
+unsigned int bkBase;                //
 float bkPres;                       //
 
 void backupSettings()               // запоминаем настройки при входе в меню
 {
   bkTrUP = TrUPcount; bkTrDN = TrDNcount; bkVol = volCount; bkAvg = AvgCount;
-  bkLED = LED_ON; bkBtn = button_beep_ON; bkResp = RespCount; bkAuto = AutoStart;
+  bkLED = LED_ON; bkBtn = button_beep_ON; bkResp = RespCount; bkAuto = AutoStart; bkBase = baseFreq;
   bkPres = presSea;
 }
 
 void restoreSettings()              // возвращаем настройки, какими они были при входе в меню
 {
   TrUPcount = bkTrUP; TrDNcount = bkTrDN; volCount = bkVol; AvgCount = bkAvg;
-  LED_ON = bkLED; button_beep_ON = bkBtn; RespCount = bkResp; AutoStart = bkAuto;
+  LED_ON = bkLED; button_beep_ON = bkBtn; RespCount = bkResp; AutoStart = bkAuto; baseFreq = bkBase;
   presSea = bkPres;
   applySettings();
   avgFill = 0;                      // усреднение начинаем заново
@@ -384,6 +398,8 @@ void exitMenu()
 {
   askSave = false;                    // убираем экран вопроса
   altChange = false;                  // выключаем режим ввода высоты
+  volEdit = false;                    // выключаем настройку громкости
+  freqEdit = false;                   // и ввод частоты
   MainMenu = false;                   // закрываем меню
   menuCount = 0;                      // обнуляем счётчик режимов меню
   symCount = 0;                       // обнуляем счётчик символов
@@ -624,13 +640,16 @@ void stopTone()                                                         // вы�
 void playTone(unsigned int freq, unsigned int dur)                      // звук заданной частоты и длительности
 {
   if (volCount == 0) {stopTone(); return;}                              // громкость OFF - молчим
-  if (freq < 250) {freq = 250;}                                         // ниже таймер 2 не может
+  if (freq < 70) {freq = 70;}                                           // ниже таймер 2 не может
   if (freq > 5000) {freq = 5000;}                                       //
-  byte top = (62500UL / freq) - 1;                                      // предделитель 256
+  byte top;                                                             //
+  byte cs;                                                              //
+  if (freq < 250) {top = (15625UL / freq) - 1; cs = _BV(CS22) | _BV(CS21) | _BV(CS20);}   // низкие частоты: предделитель 1024
+  else            {top = (62500UL / freq) - 1; cs = _BV(CS22) | _BV(CS21);}               // остальные: предделитель 256
   OCR2A = top;                                                          // частота
   OCR2B = (unsigned int)top * volDuty[volCount] / 100;                  // громкость
   TCCR2A = _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);                       // быстрый ШИМ на OC2B
-  TCCR2B = _BV(WGM22) | _BV(CS22) | _BV(CS21);                          // TOP = OCR2A, предделитель 256
+  TCCR2B = _BV(WGM22) | cs;                                             // TOP = OCR2A, выбранный предделитель
   toneOff = millis() + dur;                                             // когда выключить
 }
 
@@ -879,16 +898,60 @@ void AvgTime()                                                                  
 }                                                                                 //
 
 ///// ГРОМКОСТЬ ПИЩАЛКИ / BUZZER VOLUME /////
-void VolumeSet()                                                                  //
+void VolumeSet()                                                                  // страница громкости / базовой частоты
 {                                                                                 //
-  lcd.setCursor(0,1);                                                             //
-  lcd.print("Volume     ");                                                       // рисуем строку "Volume"
-  lcd.setCursor(12,1);                                                            //
-  if (volCount == 0) {lcd.print(" OFF");}                                         //
-  else if (volCount == 1) {lcd.print(" LOW");}                                    //
-  else if (volCount == 2) {lcd.print(" MED");}                                    //
-  else {lcd.print(" MAX");}                                                       //
+  if (freqMode == false)                                                          // ===== ВИД "ГРОМКОСТЬ" =====
+    {
+      lcd.setCursor(0,1);                                                         //
+      lcd.print("Volume      ");                                                  //
+      lcd.setCursor(12,1);                                                        //
+      if (volCount == 0) {lcd.print(" OFF");}                                     //
+      else if (volCount == 1) {lcd.print(" LOW");}                                //
+      else if (volCount == 2) {lcd.print(" MED");}                                //
+      else {lcd.print(" MAX");}                                                   //
+      lcd.setCursor(10,0);                                                        //
+      if (volEdit == true) {lcd.print("    v ");}                                 // курсор над значением
+      else {lcd.print("      ");}                                                 //
+    }
+  else                                                                            // ===== ВИД "БАЗОВАЯ ЧАСТОТА" =====
+    {
+      if (freqEdit == true)                                                       // если идёт ввод...
+        {
+          if (B3Freq == true)                                                     // ... и нажата кнопка 3, меняем цифру
+            {
+              if (symCount == 0) {f0 = nextDigit(f0);}                            //
+              if (symCount == 1) {f1 = nextDigit(f1);}                            //
+              if (symCount == 2) {f2 = nextDigit(f2);}                            //
+              if (symCount == 3) {f3 = nextDigit(f3);}                            //
+              B3Freq = false;                                                     //
+            }
+          freqSTR = (String)f0+f1+f2+f3;                                          //
+          lcd.setCursor(10,0);                                                    //
+          lcd.print("      ");                                                    // стираем старый курсор
+          lcd.setCursor((10+symCount),0);                                         //
+          lcd.print("v");                                                         // курсор над выбранной цифрой
+        }
+      else                                                                        //
+        {
+          freqToDigits(baseFreq);                                                 //
+          lcd.setCursor(10,0);                                                    //
+          lcd.print("      ");                                                    //
+        }
+      lcd.setCursor(0,1);                                                         //
+      lcd.print("Base freq ");                                                    //
+      lcd.setCursor(10,1);                                                        //
+      lcd.print(freqSTR+"Hz");                                                    // выводим частоту
+    }
 }                                                                                 //
+
+void freqToDigits(unsigned int v)   // раскладываем частоту по четырём символам
+{
+  f0 = char(48+(v/1000)%10);        //
+  f1 = char(48+(v/100)%10);         //
+  f2 = char(48+(v/10)%10);          //
+  f3 = char(48+v%10);               //
+  freqSTR = (String)f0+f1+f2+f3;    //
+}
 
 ///// РЕЖИМ РАБОТЫ ВАРИОМЕТРА / VARIO MODE SET /////
 ///// СКОРОСТЬ РЕАКЦИИ / RESPONSE SPEED SET /////
@@ -951,7 +1014,7 @@ if ((b1.update() == 1) && (b1.read() == LOW) && (b1.fell() == 1) && (longpress =
             if (saveChoice == true) {saveChoice = false;}                                 // ... переключаем ответ YES/NO
             else {saveChoice = true;}                                                     //
           }
-        else if ((presChange == false) && (altChange == false))                           // иначе листаем страницы меню НАЗАД
+        else if ((presChange == false) && (altChange == false) && (volEdit == false) && (freqEdit == false))                           // иначе листаем страницы меню НАЗАД
           {
             if (menuCount == 0) {menuCount = 9;}                                          // с первой страницы переходим на последнюю
             menuCount -= 1;                                                               //
@@ -1020,6 +1083,12 @@ if ((b2.update() == 1) && (b2.read() == LOW) && (b2.fell() == 1) && (longpress =
             if (symCount == 4) {symCount += 1;}                                           // пропускаем позицию точки
             if (symCount == 6) {symCount = 0;}                                            // после последней цифры - снова первая
           }                                                                               //
+        else if (freqEdit == true)                                                        // если идёт ввод частоты...
+          {                                                                               //
+            symCount += 1;                                                                // ... двигаем курсор по цифрам частоты
+            if (symCount == 4) {symCount = 0;}                                            //
+          }                                                                               //
+        else if (volEdit == true) {}                                                      // при настройке громкости не листаем
         else if (altChange == true)                                                       // если идёт ввод высоты...
           {                                                                               //
             symCount += 1;                                                                // ... двигаем курсор по цифрам высоты
@@ -1059,6 +1128,37 @@ if (Buttom2.click())                                                            
       }                                                                                   //
     else if (askSave == false)                                                                                  // ... если мы, всё-таки, в МЕНЮ ...
       {                                                                                   //
+        if (menuCount == 5)                                                               // на странице громкости / базовой частоты
+          {                                                                               //
+            if (freqMode == false)                                                        // --- вид "громкость" ---
+              {                                                                           //
+                if (volEdit == false) {volEdit = true;}                                   // начинаем настройку
+                else {volEdit = false; playTone(baseFreq,300); beepDelay(300);}           // заканчиваем, пробный сигнал
+                lcd.clear();                                                              //
+              }                                                                           //
+            else                                                                          // --- вид "базовая частота" ---
+              {                                                                           //
+                if (freqEdit == false)                                                    //
+                  {                                                                       //
+                    freqEdit = true;                                                      // начинаем ввод частоты
+                    freqToDigits(baseFreq);                                               //
+                    symCount = 0;                                                         //
+                  }                                                                       //
+                else                                                                      //
+                  {                                                                       //
+                    freqEdit = false;                                                     // заканчиваем ввод
+                    int v = freqSTR.toInt();                                              //
+                    if (v < FREQ_MIN) {v = FREQ_MIN;}                                     // ограничиваем диапазон
+                    if (v > FREQ_MAX) {v = FREQ_MAX;}                                     //
+                    baseFreq = v;                                                         //
+                    freqToDigits(baseFreq);                                               //
+                    symCount = 0;                                                         //
+                    playTone(baseFreq,300);                                               // пробный сигнал новой частоты
+                    beepDelay(300);                                                       //
+                  }                                                                       //
+                lcd.clear();                                                              //
+              }                                                                           //
+          }                                                                               //
         if (menuCount == 0)                                                               // на первой странице - ввод давления или высоты
           {                                                                               //
             if (altMode == false)                                                         // --- режим "давление" ---
@@ -1166,12 +1266,22 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
             if (button_beep_ON == true) {button_beep_ON = false;}                         //
             else {button_beep_ON = true;}                                                 //
           }                                                                               //
-        if (menuCount == 5)                                                               // ...если мы в режиме громкости пищалки
+        if (menuCount == 5)                                                               // ...если мы на странице громкости / базовой частоты
           {                                                                               //
-            volCount++;                                                                   //
-            if (volCount == 4) {volCount = 0;}                                            // после MAX снова OFF
-            playTone(1800,60);                                                            // пробный сигнал на новой громкости
-            beepDelay(60);                                                                //
+            if (volEdit == true)                                                          // идёт настройка громкости...
+              {                                                                           //
+                volCount++;                                                               //
+                if (volCount == 4) {volCount = 0;}                                        // после MAX снова OFF
+                playTone(baseFreq,150);                                                   // пробный сигнал на новой громкости
+                beepDelay(150);                                                           //
+              }                                                                           //
+            else if (freqEdit == true) {B3Freq = true;}                                   // идёт ввод частоты - меняем цифру
+            else                                                                          // иначе переключаем вид: громкость <-> частота
+              {                                                                           //
+                if (freqMode == true) {freqMode = false;}                                 //
+                else {freqMode = true;}                                                   //
+                lcd.clear();                                                              //
+              }                                                                           //
           }                                                                               //
         if (menuCount == 6)                                                               // ...если мы в режиме выбора работы вариометра
           {                                                                               //
@@ -1338,7 +1448,7 @@ if ((tempo-beep)>Beep_period)                                           //
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     gLEDtmp = true;                                                     // зеленый светодиод на подъеме
     Beep_period = 350-(vario*80);                                       //
-    playTone((600+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
+    playTone((baseFreq+(250*vario)),300-(vario*80));                          // выводим звук (было 1800)
   }                                                                     //
   else if ((vario<vario_down))                      // звук на сливе
   {                                                                     //
@@ -1346,7 +1456,7 @@ if ((tempo-beep)>Beep_period)                                           //
     Stmp = true;                                                        // переменная для отображения символа "B" во время работы пищалки
     rLEDtmp = true;                                                     // красный светодиод на сливе
     Beep_period=40;                                                     // update pitch every 40 ms (continuous tone)
-    playTone(constrain(int(600+(110*vario)),260,900),150);   // continuous sink tone: lower pitch the faster you sink
+    playTone(constrain(int(baseFreq+(baseFreq/5.0)*vario),80,(int)baseFreq),150);   // непрерывный тон снижения: чем сильнее снижение, тем ниже звук
   }                                                                     //
 }                                                                       //
 }                                                                       //
