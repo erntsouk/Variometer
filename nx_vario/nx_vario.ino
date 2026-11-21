@@ -125,6 +125,8 @@ boolean AfterAlarmFlag = false;     // flag to clear characters left after the a
 boolean AltDifTmpFlag = false;      // flag: was the altitude reset or not (one for all altitudes, the code picks it by cnt)
 byte RespCount = 3;                 // selected vario response speed (index into respSamples)
 const byte respSamples[5] = {10, 20, 30, 40, 50};   // CAN BE CHANGED!!! how many points are averaged at each level
+float loopMs = 35;                  // average loop time in ms, measured outside the menu
+unsigned long lastLoop = 0;         // time of the previous loop
 
 static char outtemp[5];             // char array for temperature rounded to tenths
 static char outvario[5];            // char array for vario value rounded to tenths
@@ -961,8 +963,7 @@ void Response()                                                                 
   lcd.print("Resp ");                                                             // draw "Resp"
   lcd.print(RespCount+1);                                                         // show level 1...5
   lcd.setCursor(10,1);                                                            //
-  float win = (tim[maxsamples] - tim[maxsamples-samples]) / 1000.0;                // real averaging window, seconds
-  if (win < 0) {win = 0;}                                                         //
+  float win = samples * loopMs / 1000.0;                                          // averaging window = points x loop time, seconds
   if (win < 10) {lcd.print(" ");}                                                 //
   lcd.print(win,1);                                                               // show the window in seconds
   lcd.print("s ");                                                                //
@@ -982,6 +983,12 @@ void ButtonBeep()                                                               
 void loop()                                                                               //
 {                                                                                         //
 toneService();                                                          // stop the sound when it is time
+{                                                                       // measure loop time (only outside the menu, so it matches flying)
+  unsigned long nowL = millis();                                        //
+  if ((MainMenu == false) && (lastLoop != 0))                           //
+    {loopMs += ((float)(nowL - lastLoop) - loopMs) * 0.02;}             // slow smoothing - steady value
+  lastLoop = nowL;                                                      //
+}
 if (sensor.read(3))                                                                       // check for data from the sensor
 {                                                                                         // read the bmp180. Accuracy 0 to 3 in the brackets, 3 is maximum
 if (vario>-0.3) {Alarm = false;}                                                          // check fall alarm ON/OFF
