@@ -118,7 +118,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v28"            // program version shown on the info page
+#define FW_VERSION "v29"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -941,8 +941,7 @@ void InfoPage()                                                                 
   if (infoCount == 0) {lcd.print("Version   "); lcd.print(FW_VERSION); lcd.print("   ");}
   else if (infoCount == 1) {lcd.print("Temp     "); lcd.print(sensor.temp,1); lcd.print("C  ");}
   else if (infoCount == 2) {lcd.print("Loop      "); lcd.print((int)loopMs); lcd.print("ms  ");}
-  else if (infoCount == 3) {lcd.print("Free RAM  "); lcd.print(freeRam()); lcd.print("B  ");}
-  else {lcd.print("Pres "); lcd.print(sensor.pres*MMHG_TO_HPA,1); lcd.print("hPa ");}
+  else {lcd.print("Free RAM  "); lcd.print(freeRam()); lcd.print("B  ");}
 }                                                                                 //
 
 ///// AVERAGING TIME /////
@@ -1396,7 +1395,7 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
         if (menuCount == 10)                                                              // ...if we are on the info page
           {                                                                               //
             infoCount++;                                                                  // next info item
-            if (infoCount == 5) {infoCount = 0;}                                          //
+            if (infoCount == 4) {infoCount = 0;}                                          //
             lcd.clear();                                                                  //
           }                                                                               //
       }                                                                                   //
