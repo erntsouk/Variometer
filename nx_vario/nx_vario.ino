@@ -43,7 +43,7 @@ byte avgIdx = 0;                    // position in the ring buffer
 byte avgFill = 0;                   // how many snapshots have been collected
 unsigned long avgTime = 0;          // time of the last snapshot
 byte AvgCount = 1;                  // selected averaging time (index into avgSec)
-const byte avgSec[5] = {5, 10, 15, 20, 30};   // CAN BE CHANGED!!! averaging time options, seconds
+const byte avgSec[6] = {5, 10, 15, 20, 30, 0};   // CAN BE CHANGED!!! averaging time options, seconds (0 = OFF, live value)
 float maxVario = 0;                 // maximum vario value
 float minVario = 0;                 // minimum vario value
 float maxVarioAvg = 0;              // maximum averaged vario value
@@ -137,7 +137,7 @@ boolean saveChoice = true;          // selected answer to that question (YES/NO)
 boolean askReset = false;           // is the "Reset all?" question shown
 boolean resetChoice = false;        // selected answer (default NO)
 byte infoCount = 0;                 // which item the info page shows
-#define FW_VERSION "v36"            // program version shown on the info page
+#define FW_VERSION "v37"            // program version shown on the info page
 boolean presChange = false;         // pressure entry mode on/off
 boolean B3Pres = false;             // raise the pressure digit by one when the button is pressed
 boolean TresUPchange = false;       // flag to change the climb threshold with button 3
@@ -297,7 +297,7 @@ void loadSettings()
   EEPROM.get(0, s);
   if (s.magic == SETTINGS_MAGIC && s.TrUP < 5 && s.TrDN < 5 && s.vol < 4 && s.avg < 5 && s.resp < 5 && s.buz < 6 && s.base >= FREQ_MIN && s.base <= FREQ_MAX && s.presSea > 300.0 && s.presSea < 1200.0)
     {
-      TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = s.avg;
+      TrUPcount = s.TrUP; TrDNcount = s.TrDN; volCount = s.vol; AvgCount = (s.avg < 6) ? s.avg : 1;
       LED_ON = s.led; button_beep_ON = s.btnBeep; RespCount = s.resp; AutoStart = s.autoStart; baseFreq = s.base; BuzCount = (s.buz < 5) ? s.buz : 4;
       presSea = s.presSea;
     }
@@ -1176,6 +1176,7 @@ void AvgTime()                                                                  
   lcd.setCursor(0,1);                                                             //
   lcd.print(F("Average    "));                                                       // draw "Average"
   lcd.setCursor(12,1);                                                            //
+  if (avgSec[AvgCount] == 0) {lcd.print(F(" OFF")); return;}                       // OFF - no averaging
   if (avgSec[AvgCount] < 10) {lcd.print(F("  "));}                                   //
   else {lcd.print(F(" "));}                                                          //
   lcd.print(avgSec[AvgCount]);                                                    // show the averaging time
@@ -1627,7 +1628,7 @@ if ((b3.update() == 1) && (b3.read() == LOW) && (b3.fell() == 1) && (longpress =
         if (menuCount == 7)                                                               // ...if we are on the averaging time page
           {                                                                               //
             AvgCount++;                                                                   //
-            if (AvgCount == 5) {AvgCount = 0;}                                            // after the last value - back to the first
+            if (AvgCount == 6) {AvgCount = 0;}                                            // after the last value - back to the first
             avgFill = 0;                                                                  // start collecting again
           }                                                                               //
         if (menuCount == 8)                                                               // ...if we are on the auto take-off page
@@ -1732,12 +1733,14 @@ if (millis() - avgTime >= 1000)                                         // store
     if (avgFill < 31) {avgFill++;}                                      //
     flightDetect();                                                     // check take-off / landing
     byte n = avgSec[AvgCount];                                          // selected averaging time
-    if (avgFill > n)                                                    // when enough snapshots are collected...
+    if ((n > 0) && (avgFill > n))                                       // when averaging is on and enough snapshots are collected...
       {
         byte old = (avgIdx + 31 - n) % 31;                              // snapshot n seconds ago
         varioAvg = (avgAlt[avgIdx] - avgAlt[old]) / float(n);           // average climb rate over that time
       }
   }
+
+if (avgSec[AvgCount] == 0) {varioAvg = vario;}                         // averaging OFF - show the live value
 
 ///// MIN VARIO /////
 if (maxVario<vario) {maxVario = vario;}                                 // store maximum vario
