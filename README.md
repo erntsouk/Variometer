@@ -71,3 +71,5 @@ The Waveshare LCD1602 I2C used in this build is a different module, with a diffe
 ## Credits
 
 The original NX-VARIO design, firmware and case are by **XONIX2004**: https://www.thingiverse.com/XONIX2004
+
+Original build write-up: https://www.instructables.com/id/DIY-Arduino-Variometer-for-Paragliding-%D0%94%D0%B5%D0%BB%D0%B0%D0%B5%D0%BC-%D0%92%D0%B0%D1%80%D0%B8/
