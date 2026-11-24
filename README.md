@@ -45,9 +45,16 @@ Arduino Nano paragliding vario with baro/IMU fusion. Based on the original NX-VA
 - `nx_vario_lcd_i2c/` — same firmware, standard I2C 1602 display.
 - `tools/mpu_test_v1/` — MPU6050 test sketch.
 - `docs/wiring.png` — wiring diagram.
+- `case/` — 3D-printable case (STL).
 
 The commit history contains every version from the original sketch onward.
+
+## Case
+
+`case/` — NX-Vario case v1.2 by XONIX2004 ([thing:3321624](https://www.thingiverse.com/thing:3321624)), CC BY. Parts: top, bottom, battery cap, sensor cap, button caps. Print **without supports**. The battery can be swapped without opening the case.
 
 ## Credits
 
 The original NX-VARIO design, firmware and case are by **XONIX2004**: https://www.thingiverse.com/XONIX2004
+
+Original build write-up: https://www.instructables.com/id/DIY-Arduino-Variometer-for-Paragliding-%D0%94%D0%B5%D0%BB%D0%B0%D0%B5%D0%BC-%D0%92%D0%B0%D1%80%D0%B8/
