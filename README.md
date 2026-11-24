@@ -34,7 +34,7 @@ The original NX-VARIO uses a standard 1602 LCD with a PCF8574 I2C backpack (0x27
 - Waveshare LCD1602 I2C → `nx_vario/`
 - Standard 1602 + PCF8574 backpack → `nx_vario_lcd_i2c/`
 
-The case in `case/` is built around the original display (see Case below).
+The case in `case/` is built around the original display.
 
 ## Libraries
 
