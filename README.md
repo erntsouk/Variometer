@@ -34,7 +34,7 @@ The original NX-VARIO uses a standard 1602 LCD with a PCF8574 I2C backpack (0x27
 - Waveshare LCD1602 I2C → `nx_vario/`
 - Standard 1602 + PCF8574 backpack → `nx_vario_lcd_i2c/`
 
-The case in `case/` was designed for the original display.
+The case in `case/` is built around the original display (see Case below).
 
 ## Libraries
 
@@ -61,6 +61,12 @@ The commit history contains every version from the original sketch onward.
 ## Case
 
 `case/` — NX-Vario case v1.2 by XONIX2004 ([thing:3321624](https://www.thingiverse.com/thing:3321624)), CC BY. Parts: top, bottom, battery cap, sensor cap, button caps. Print **without supports**. The battery can be swapped without opening the case.
+
+The case is designed around the **standard 1602 LCD module (80 × 36 mm PCB) with a PCF8574 I2C backpack**, which is the display the original NX-VARIO uses. The window, PCB mounting and internal clearance are made for that module.
+
+The Waveshare LCD1602 I2C used in this build is a different module, with a different PCB size, mounting and connector position. It does not drop into this case as is. Either:
+- use the standard 1602 + backpack with `nx_vario_lcd_i2c/` and print the case unchanged, or
+- adapt the top part (window and mounts) to the Waveshare module.
 
 ## Credits
 
