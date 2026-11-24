@@ -27,7 +27,7 @@ A home-built paragliding variometer on an Arduino Nano, based on the original NX
 | MPU6050 accelerometer/gyro | I2C (A4 SDA, A5 SCL) |
 | Waveshare LCD1602 I2C display | I2C (A4 SDA, A5 SCL) |
 | Passive buzzer | D3 |
-| Buttons 1 / 2 / 3 | D5 / D4 / D6, with pull-down resistors (pressed = HIGH) |
+| Buttons 1 / 2 / 3 | D4 / D5 / D6, with 10K pull-down resistors (pressed = HIGH) |
 | Green / red LED | D7 / D8 |
 
 ## Libraries

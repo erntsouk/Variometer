@@ -17,8 +17,8 @@ public:
 };
 
 VarioLCD lcd(16, 2);
-#define switchPin1 5                // button 1 pin
-#define switchPin2 4                // button 2 pin
+#define switchPin1 4                // button 1 pin (D4, as in the wiring diagram)
+#define switchPin2 5                // button 2 pin (D5, as in the wiring diagram)
 #define switchPin3 6                // button 3 pin
 #define p 3                         // buzzer pin
 #define gLED 7                      // GREEN LED pin
