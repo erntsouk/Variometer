@@ -27,6 +27,15 @@ Arduino Nano paragliding vario with baro/IMU fusion. Based on the original NX-VA
 | Buttons 1 / 2 / 3 | D4 / D5 / D6, 10K pull-down (pressed = HIGH) |
 | LED green / red | D7 / D8 |
 
+### Display
+
+The original NX-VARIO uses a standard 1602 LCD with a PCF8574 I2C backpack (0x27). This build uses a **Waveshare LCD1602 I2C** module instead (AiP31068L controller, 0x3E, no backlight control). Pick the firmware that matches your display:
+
+- Waveshare LCD1602 I2C → `nx_vario/`
+- Standard 1602 + PCF8574 backpack → `nx_vario_lcd_i2c/`
+
+The case in `case/` was designed for the original display.
+
 ## Libraries
 
 `BMP180` (iarduino), `Bounce2`, `SBB_CLICK`, plus the display library:
