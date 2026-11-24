@@ -22,14 +22,16 @@ Arduino Nano paragliding vario with baro/IMU fusion. Based on the original NX-VA
 | Part | Pins |
 |---|---|
 | Arduino Nano (ATmega328P) | |
-| BMP180, MPU6050, LCD1602 I2C (Waveshare) | A4 SDA / A5 SCL |
+| BMP180, MPU6050, LCD1602 I2C | A4 SDA / A5 SCL |
 | Passive buzzer | D3 (OC2B) |
 | Buttons 1 / 2 / 3 | D4 / D5 / D6, 10K pull-down (pressed = HIGH) |
 | LED green / red | D7 / D8 |
 
 ## Libraries
 
-`BMP180` (iarduino), `Waveshare_LCD1602`, `Bounce2`, `SBB_CLICK`
+`BMP180` (iarduino), `Bounce2`, `SBB_CLICK`, plus the display library:
+- `nx_vario/` — Waveshare LCD1602 I2C (AiP31068L, 0x3E): `Waveshare_LCD1602`
+- `nx_vario_lcd_i2c/` — standard 1602 + PCF8574 backpack (original NX-VARIO display, 0x27): `LiquidCrystal_I2C`
 
 ## Build notes
 
@@ -39,7 +41,8 @@ Arduino Nano paragliding vario with baro/IMU fusion. Based on the original NX-VA
 
 ## Files
 
-- `nx_vario/` — firmware.
+- `nx_vario/` — firmware, Waveshare display.
+- `nx_vario_lcd_i2c/` — same firmware, standard I2C 1602 display.
 - `tools/mpu_test_v1/` — MPU6050 test sketch.
 - `docs/wiring.png` — wiring diagram.
 
