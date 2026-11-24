@@ -1,6 +1,6 @@
 # NX-VARIO
 
-A home-built paragliding variometer on an Arduino Nano, based on the original NX-VARIO by [XONIX2004](https://www.thingiverse.com/XONIX2004/designs). It beeps when you climb, plays a continuous deep tone when you sink, and has a soft "buzzer" that helps you find weak thermals.
+A home-built paragliding variometer on an Arduino Nano, based on the original NX-VARIO by [XONIX2004](https://www.thingiverse.com/XONIX2004). It beeps when you climb, plays a continuous deep tone when you sink, and has a soft "buzzer" that helps you find weak thermals.
 
 ![Wiring](docs/wiring.png)
 
@@ -71,6 +71,7 @@ The commit history keeps every version, from the original sketch up to the curre
 ## Credits
 
 The original NX-VARIO design, firmware and 3D-printable case are by **XONIX2004**:
+- Profile: https://www.thingiverse.com/XONIX2004
 - Designs and case STL files: https://www.thingiverse.com/XONIX2004/designs
 
 This project started from his sketch. The Russian comments were translated to English, and a lot was added since: the accelerometer fusion, buzzer, menus, saved settings and auto take-off.
