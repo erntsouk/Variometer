@@ -28,9 +28,9 @@ Bounce b1 = Bounce();               // create Bounce object 1 (button debouncing
 Bounce b2 = Bounce();               // create Bounce object 2 (button debouncing)
 Bounce b3 = Bounce();               // create Bounce object 3 (button debouncing)
 
-SBB_CLICK Buttom1(5,1);             // create the object with (button 1 pin, seconds to hold) - for long press detection
-SBB_CLICK Buttom2(4,1);             // create the object with (button 2 pin, seconds to hold) - for long press detection
-SBB_CLICK Buttom3(6,1);             // create the object with (button 3 pin, seconds to hold) - for long press detection
+SBB_CLICK Buttom1(switchPin1,1);    // create the object with (button 1 pin, seconds to hold) - for long press detection
+SBB_CLICK Buttom2(switchPin2,1);    // create the object with (button 2 pin, seconds to hold) - for long press detection
+SBB_CLICK Buttom3(switchPin3,1);    // create the object with (button 3 pin, seconds to hold) - for long press detection
 
 float vario_down = -1.1;            // SINK threshold for the buzzer         - CAN BE CHANGED only together with TrDNcount, take values from the treshDN array!!!
 float vario_up = 0.1;               // CLIMB threshold for the buzzer          - CAN BE CHANGED only together with TrUPcount, take values from the treshUP array!!!
