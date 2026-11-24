@@ -1,76 +1,50 @@
 # NX-VARIO
 
-A home-built paragliding variometer on an Arduino Nano, based on the original NX-VARIO by [XONIX2004](https://www.thingiverse.com/XONIX2004). It beeps when you climb, plays a continuous deep tone when you sink, and has a soft "buzzer" that helps you find weak thermals.
+Arduino Nano paragliding vario with baro/IMU fusion. Based on the original NX-VARIO by [XONIX2004](https://www.thingiverse.com/XONIX2004).
 
 ![Wiring](docs/wiring.png)
 
 ## Features
 
-- **Fast vario:** the barometer (BMP180) and accelerometer (MPU6050) are combined, so the vario reacts in about 0.05 s.
-- **Climb sound:** beeps get faster and higher as the lift gets stronger.
-- **Sink sound:** a continuous tone that gets deeper as you sink faster.
-- **Weak-lift buzzer:** a soft, continuous tone between your buzzer setting (−0.3 to 0.0 m/s) and the climb threshold. It starts quiet and low, then gets louder and higher until the beeps take over.
-- **Auto take-off and landing:** the vario stays silent on the ground and turns on when you take off. After landing it asks "LANDED?".
-- **Settings saved** in EEPROM. Leaving the menu asks YES/NO before saving.
-- **4 main screens:**
-  - vario and altitude;
-  - max altitudes;
-  - max/min vario;
-  - max/min average.
+- **Fusion:** BMP180 + MPU6050, using a third-order complementary filter whose states are altitude, climb rate and accelerometer bias. The gain is selectable in the menu (Response). Response is about 50 ms.
+- **Orientation:** the gravity vector is tracked with the gyro, and the accelerometer only corrects it when |a| is within 0.05 g of g0. This prevents false climb in turns.
+- **Calibration:** 6-face accelerometer calibration (offset and scale per axis), stored in its own EEPROM block.
+- **Audio:** Timer2 fast PWM on D3, with volume set by duty cycle.
+  - Climb: pitch and beep rate follow the vario.
+  - Sink: a continuous tone that drops with the sink rate.
+  - Weak-lift buzzer: a continuous tone from the set value (−0.3 to 0.0 m/s, or OFF) up to the climb threshold. Pitch and volume both ramp up toward the climb tone.
+- **Average:** 5–30 s, or OFF (live value).
+- **Auto take-off and landing:** take-off at 10 m altitude change, or more than 0.5 m/s for 3 s. Audio is muted on the ground.
+- **Settings:** stored in EEPROM, with a YES/NO save prompt when leaving the menu.
 
 ## Hardware
 
-| Part | Connection |
+| Part | Pins |
 |---|---|
 | Arduino Nano (ATmega328P) | |
-| BMP180 barometer | I2C (A4 SDA, A5 SCL) |
-| MPU6050 accelerometer/gyro | I2C (A4 SDA, A5 SCL) |
-| Waveshare LCD1602 I2C display | I2C (A4 SDA, A5 SCL) |
-| Passive buzzer | D3 |
-| Buttons 1 / 2 / 3 | D4 / D5 / D6, with 10K pull-down resistors (pressed = HIGH) |
-| Green / red LED | D7 / D8 |
+| BMP180, MPU6050, LCD1602 I2C (Waveshare) | A4 SDA / A5 SCL |
+| Passive buzzer | D3 (OC2B) |
+| Buttons 1 / 2 / 3 | D4 / D5 / D6, 10K pull-down (pressed = HIGH) |
+| LED green / red | D7 / D8 |
 
 ## Libraries
 
-- `BMP180` (iarduino)
-- `Waveshare_LCD1602`
-- `Bounce2`
-- `SBB_CLICK`
-- `Wire`, `EEPROM` (built in)
+`BMP180` (iarduino), `Waveshare_LCD1602`, `Bounce2`, `SBB_CLICK`
 
-## Menu pages
+## Build notes
 
-1. Sea pressure / altitude
-2. Climb threshold
-3. Sink threshold
-4. LEDs
-5. Button beep
-6. Volume, base frequency (500–1200 Hz) and buzzer
-7. Response speed
-8. Average time (5–30 s or OFF)
-9. Auto start
-10. Factory reset
-11. Accelerometer calibration
-12. Info (version, temperature, loop time, free RAM, accelerometer and barometer status)
-
-## Calibrating the accelerometer (do this once)
-
-1. Open menu page 11.
-2. Lay the vario still on a table on each of its 6 sides (like a dice): screen up, screen down, left, right, top end, bottom end.
-3. On each side, press button 3 and don't touch it for about 2 seconds.
-4. After all 6 sides the screen shows **"Cal saved"**. The calibration is stored separately, so a factory reset doesn't erase it.
+- Flash use is about 28.4 KB of 30 KB on the old bootloader, so there isn't much room left.
+- Values marked `CAN BE CHANGED!!!` are the tuning parameters.
+- Run the calibration (menu 11) once after assembly. Place the vario still on each face and press button 3.
 
 ## Files
 
-- `nx_vario/nx_vario.ino` — the current firmware. Open this folder in the Arduino IDE.
-- `tools/mpu_test_v1/` — test sketch for the MPU6050.
+- `nx_vario/` — firmware.
+- `tools/mpu_test_v1/` — MPU6050 test sketch.
 - `docs/wiring.png` — wiring diagram.
 
-The commit history keeps every version, from the original sketch up to the current one.
+The commit history contains every version from the original sketch onward.
 
 ## Credits
 
-The original NX-VARIO design, firmware and 3D-printable case are by **XONIX2004**:
-- Profile: https://www.thingiverse.com/XONIX2004
-
-This project started from his sketch. The Russian comments were translated to English, and a lot was added since: the accelerometer fusion, buzzer, menus, saved settings and auto take-off.
+The original NX-VARIO design, firmware and case are by **XONIX2004**: https://www.thingiverse.com/XONIX2004
